@@ -1,0 +1,142 @@
+CREATE TABLE empresa (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    telefone TEXT,
+    documento TEXT,
+    categoria TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT
+);
+
+CREATE TABLE clientes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    telefone TEXT,
+    email TEXT,
+    documento TEXT,
+    endereco TEXT,
+    cidade TEXT,
+    estado TEXT,
+    observacoes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT
+);
+
+CREATE TABLE servicos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    valor_padrao REAL DEFAULT 0,
+    ativo INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT
+);
+
+CREATE TABLE produtos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    codigo TEXT,
+    preco_custo REAL DEFAULT 0,
+    preco_venda REAL DEFAULT 0,
+    estoque_atual REAL DEFAULT 0,
+    estoque_minimo REAL DEFAULT 0,
+    unidade TEXT DEFAULT 'UN',
+    ativo INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT
+);
+
+CREATE TABLE ordens_servico (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id INTEGER,
+    numero TEXT,
+    titulo TEXT,
+    descricao TEXT,
+    status TEXT DEFAULT 'ORCAMENTO',
+    data_abertura TEXT DEFAULT CURRENT_TIMESTAMP,
+    data_previsao TEXT,
+    data_conclusao TEXT,
+    subtotal REAL DEFAULT 0,
+    desconto REAL DEFAULT 0,
+    acrescimo REAL DEFAULT 0,
+    total REAL DEFAULT 0,
+    valor_pago REAL DEFAULT 0,
+    valor_pendente REAL DEFAULT 0,
+    observacoes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT,
+
+    FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+
+CREATE TABLE ordem_servico_itens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ordem_servico_id INTEGER NOT NULL,
+
+    tipo TEXT NOT NULL, 
+    -- SERVICO ou PRODUTO
+
+    servico_id INTEGER,
+    produto_id INTEGER,
+
+    descricao TEXT NOT NULL,
+    quantidade REAL DEFAULT 1,
+    valor_unitario REAL DEFAULT 0,
+    valor_total REAL DEFAULT 0,
+
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id),
+    FOREIGN KEY (servico_id) REFERENCES servicos(id),
+    FOREIGN KEY (produto_id) REFERENCES produtos(id)
+);
+
+CREATE TABLE pagamentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ordem_servico_id INTEGER NOT NULL,
+    valor REAL NOT NULL,
+    forma_pagamento TEXT,
+    -- PIX, DINHEIRO, CARTAO, BOLETO, OUTRO
+
+    status TEXT DEFAULT 'PAGO',
+    -- PAGO, PENDENTE, CANCELADO
+
+    data_pagamento TEXT DEFAULT CURRENT_TIMESTAMP,
+    observacoes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id)
+);
+
+CREATE TABLE movimentacoes_estoque (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    produto_id INTEGER NOT NULL,
+    ordem_servico_id INTEGER,
+
+    tipo TEXT NOT NULL,
+    -- ENTRADA, SAIDA, AJUSTE
+
+    quantidade REAL NOT NULL,
+    estoque_anterior REAL DEFAULT 0,
+    estoque_novo REAL DEFAULT 0,
+    motivo TEXT,
+
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (produto_id) REFERENCES produtos(id),
+    FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id)
+);
+
+CREATE TABLE templates_whatsapp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    -- RESUMO_OS, COBRANCA, LEMBRETE, AGRADECIMENTO
+
+    mensagem TEXT NOT NULL,
+    ativo INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT
+);
