@@ -105,6 +105,16 @@ class _HomeScreenState extends State<HomeScreen> {
     carregarDados();
   }
 
+  ClienteModel? buscarCliente(int? clienteId) {
+    if (clienteId == null) return null;
+
+    try {
+      return clientes.firstWhere((c) => c.id == clienteId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Widget topCard() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
@@ -351,6 +361,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget agendaCard(AgendaModel item) {
+    final cliente = buscarCliente(item.clienteId);
+
     Color cor = AppColors.warning;
 
     if (item.status == 'CONCLUIDO') cor = AppColors.success;
@@ -366,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: ListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         onTap: () async {
           await Navigator.push(
             context,
@@ -390,9 +402,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         subtitle: Text(
+          '${cliente?.nome ?? 'Cliente não informado'}\n'
           '${item.horaInicio} - ${item.horaFim.isEmpty ? '--:--' : item.horaFim} • ${item.status}',
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            height: 1.3,
+          ),
         ),
+        isThreeLine: true,
         trailing: const Icon(
           Icons.arrow_forward_ios_rounded,
           size: 13,
@@ -510,14 +530,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     runSpacing: 10,
                     children: [
                       actionSmall(
-                        icon: Icons.note_add_rounded,
-                        title: 'Nova OS',
-                        onTap: novaOrdem,
-                      ),
-                      actionSmall(
                         icon: Icons.calendar_month_rounded,
                         title: 'Agenda',
                         onTap: novoAgendamento,
+                      ),
+                      actionSmall(
+                        icon: Icons.notifications_active_rounded,
+                        title: 'Lembretes',
+                        onTap: () {
+                          Navigator.pushNamed(context, '/lembretes');
+                        },
+                      ),
+                      actionSmall(
+                        icon: Icons.note_add_rounded,
+                        title: 'Nova OS',
+                        onTap: novaOrdem,
                       ),
                       actionSmall(
                         icon: Icons.person_add_alt_1_rounded,
@@ -554,14 +581,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                     ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  metricCard(
-                    value: ordensAbertas.length.toString(),
-                    label: 'OS abertas',
-                    icon: Icons.assignment_rounded,
                   ),
 
                   sectionTitle(

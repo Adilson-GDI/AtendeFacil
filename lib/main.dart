@@ -1,3 +1,4 @@
+import 'services/local_notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -24,7 +25,7 @@ import 'screens/backup/backup_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/onboarding/tipo_servico_inicial_screen.dart';
 import 'screens/anamnese/anamnese_screen.dart';
-
+import 'screens/lembretes/lembretes_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'services/push_service.dart';
 
@@ -37,6 +38,8 @@ void main() async {
   await themeController.carregarTema();
 
   PushService.inicializar();
+
+  await LocalNotificationService.instance.init();
 
   runApp(
     ChangeNotifierProvider.value(
@@ -77,6 +80,7 @@ class AtendeFacilApp extends StatelessWidget {
         '/backup': (context) => const BackupScreen(),
         '/splash': (_) => const SplashScreen(),
         '/tipo-servico-inicial': (_) => const TipoServicoInicialScreen(),
+        '/lembretes': (_) => const LembretesScreen(),
         '/anamnese': (_) => const AnamneseScreen(),
         '/aparencia': (_) => const AparenciaScreen(),
         '/aparencia-inicial': (_) =>

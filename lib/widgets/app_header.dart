@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/app_colors.dart';
 import '../core/app_theme_controller.dart';
 
 class AppHeader extends StatelessWidget {
@@ -11,6 +10,7 @@ class AppHeader extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onMenu;
   final bool menuActive;
+  final Widget? rightWidget;
 
   const AppHeader({
     super.key,
@@ -20,6 +20,7 @@ class AppHeader extends StatelessWidget {
     this.onBack,
     this.onMenu,
     this.menuActive = false,
+    this.rightWidget,
   });
 
   @override
@@ -75,6 +76,11 @@ class AppHeader extends StatelessWidget {
                 ],
               ),
             ),
+
+            if (rightWidget != null) ...[
+              rightWidget!,
+              const SizedBox(width: 8),
+            ],
 
             InkWell(
               borderRadius: BorderRadius.circular(16),

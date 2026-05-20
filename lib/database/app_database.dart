@@ -34,7 +34,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 15,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -51,6 +51,7 @@ class AppDatabase {
     await _createAgendaTable(db);
     await _createAnamnesesTable(db);
     await TreinosDatabase.createTables(db);
+    await _createLembretesTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -121,6 +122,13 @@ class AppDatabase {
       await _addColumnIfNotExists(db, 'app_config', 'email', 'TEXT');
 
       await _addColumnIfNotExists(db, 'app_config', 'cep', 'TEXT');
+    }
+
+    if (oldVersion < 14) {
+      await _createLembretesTable(db);
+    }
+    if (oldVersion < 15) {
+      await _addColumnIfNotExists(db, 'lembretes', 'ultima_execucao', 'TEXT');
     }
   }
 
@@ -358,6 +366,24 @@ class AppDatabase {
       updated_at TEXT,
 
       FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+    )
+  ''');
+  }
+
+  Future<void> _createLembretesTable(Database db) async {
+    await db.execute('''
+  CREATE TABLE IF NOT EXISTS lembretes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      titulo TEXT NOT NULL,
+      descricao TEXT,
+      tipo TEXT DEFAULT 'GERAL',
+      data_inicio TEXT NOT NULL,
+      hora TEXT,
+      recorrencia TEXT DEFAULT 'NENHUMA',
+      ativo INTEGER DEFAULT 1,
+      concluido INTEGER DEFAULT 0,
+      ultima_execucao TEXT,
+      created_at TEXT NOT NULL
     )
   ''');
   }

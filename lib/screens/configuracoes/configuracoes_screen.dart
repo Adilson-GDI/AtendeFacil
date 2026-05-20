@@ -386,6 +386,16 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
 
                 _menuCard(
                   context: context,
+                  icon: Icons.notifications_active_rounded,
+                  title: 'Lembretes',
+                  subtitle: 'Tarefas, alertas e recorrências',
+                  onTap: () {
+                    Navigator.pushNamed(context, '/lembretes');
+                  },
+                ),
+
+                _menuCard(
+                  context: context,
                   icon: Icons.assignment_rounded,
                   title: 'Ordens de serviço',
                   subtitle: 'Orçamentos, serviços e acompanhamento',
