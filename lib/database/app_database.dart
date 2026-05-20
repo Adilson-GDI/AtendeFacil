@@ -9,6 +9,10 @@ import '../models/ordem_servico_item_model.dart';
 import '../models/pagamento_model.dart';
 import '../models/app_config_model.dart';
 import '../models/agenda_model.dart';
+import 'treinos_database.dart';
+import '../models/exercicio_model.dart';
+import '../models/treino_model.dart';
+import '../models/treino_item_model.dart';
 
 class AppDatabase {
   static final AppDatabase instance = AppDatabase._init();
@@ -30,7 +34,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 13,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -45,6 +49,8 @@ class AppDatabase {
     await _createPagamentosTable(db);
     await _createAppConfigTable(db);
     await _createAgendaTable(db);
+    await _createAnamnesesTable(db);
+    await TreinosDatabase.createTables(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -94,7 +100,27 @@ class AppDatabase {
     }
 
     if (oldVersion < 9) {
+      await db.execute(
+        "ALTER TABLE app_config ADD COLUMN tipo_servico TEXT DEFAULT 'GERAL'",
+      );
+    }
+
+    if (oldVersion < 10) {
       await _createAgendaTable(db);
+    }
+
+    if (oldVersion < 11) {
+      await TreinosDatabase.createTables(db);
+    }
+
+    if (oldVersion < 12) {
+      await _createAnamnesesTable(db);
+    }
+
+    if (oldVersion < 13) {
+      await _addColumnIfNotExists(db, 'app_config', 'email', 'TEXT');
+
+      await _addColumnIfNotExists(db, 'app_config', 'cep', 'TEXT');
     }
   }
 
@@ -220,28 +246,32 @@ class AppDatabase {
 
   Future<void> _createAppConfigTable(Database db) async {
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS app_config (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome_empresa TEXT DEFAULT 'Atende Fácil',
-        cor_primaria TEXT DEFAULT '#1B5CB1',
-        cor_secundaria TEXT DEFAULT '#C9A46B',
-        logo_path TEXT,
+  CREATE TABLE IF NOT EXISTS app_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_empresa TEXT DEFAULT 'Atende Fácil',
+    cor_primaria TEXT DEFAULT '#1B5CB1',
+    cor_secundaria TEXT DEFAULT '#C9A46B',
+    logo_path TEXT,
 
-        telefone TEXT,
-        whatsapp TEXT,
-        instagram TEXT,
-        documento TEXT,
-        endereco TEXT,
-        cidade TEXT,
-        estado TEXT,
+    telefone TEXT,
+    whatsapp TEXT,
+    email TEXT,
+    cep TEXT,
+    instagram TEXT,
+    documento TEXT,
+    endereco TEXT,
+    cidade TEXT,
+    estado TEXT,
 
-        mensagem_resumo_os TEXT,
-        mensagem_cobranca TEXT,
+    mensagem_resumo_os TEXT,
+    mensagem_cobranca TEXT,
 
-        created_at TEXT NOT NULL,
-        updated_at TEXT
-      )
-    ''');
+    tipo_servico TEXT DEFAULT 'GERAL',
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )
+''');
 
     await _garantirConfigAppPadrao(db);
   }
@@ -257,6 +287,8 @@ class AppDatabase {
         'logo_path': null,
         'telefone': null,
         'whatsapp': null,
+        'email': null,
+        'cep': null,
         'instagram': null,
         'documento': null,
         'endereco': null,
@@ -264,6 +296,7 @@ class AppDatabase {
         'estado': null,
         'mensagem_resumo_os': null,
         'mensagem_cobranca': null,
+        'tipo_servico': 'GERAL',
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': null,
       });
@@ -297,6 +330,34 @@ class AppDatabase {
 
       FOREIGN KEY (cliente_id) REFERENCES clientes(id),
       FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id)
+    )
+  ''');
+  }
+
+  Future<void> _createAnamnesesTable(Database db) async {
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS anamneses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente_id INTEGER NOT NULL,
+      tipo_servico TEXT NOT NULL,
+
+      objetivo TEXT,
+      queixa_principal TEXT,
+      historico_saude TEXT,
+      lesoes TEXT,
+      cirurgias TEXT,
+      medicamentos TEXT,
+      alergias TEXT,
+      dores TEXT,
+      limitacoes TEXT,
+      nivel_atividade TEXT,
+      observacoes TEXT,
+
+      data_anamnese TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+
+      FOREIGN KEY (cliente_id) REFERENCES clientes(id)
     )
   ''');
   }
@@ -731,6 +792,8 @@ class AppDatabase {
         'logo_path': null,
         'telefone': '',
         'whatsapp': '',
+        'email': '',
+        'cep': '',
         'instagram': '',
         'documento': '',
         'endereco': '',
@@ -952,6 +1015,183 @@ class AppDatabase {
     );
 
     return result.isNotEmpty;
+  }
+
+  Future<double> totalPagoDaOrdem(int ordemServicoId) async {
+    final db = await instance.database;
+
+    final result = await db.rawQuery(
+      '''
+    SELECT COALESCE(SUM(valor), 0) AS total_pago
+    FROM pagamentos
+    WHERE ordem_servico_id = ?
+      AND status = 'PAGO'
+    ''',
+      [ordemServicoId],
+    );
+
+    return (result.first['total_pago'] as num).toDouble();
+  }
+
+  Future<int> atualizarTipoServicoApp(String tipoServico) async {
+    final db = await instance.database;
+
+    return await db.update(
+      'app_config',
+      {
+        'tipo_servico': tipoServico,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [1],
+    );
+  }
+
+  Future<String> buscarTipoServicoApp() async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'app_config',
+      where: 'id = ?',
+      whereArgs: [1],
+      limit: 1,
+    );
+
+    if (result.isEmpty) {
+      return 'GERAL';
+    }
+
+    return result.first['tipo_servico']?.toString() ?? 'GERAL';
+  }
+
+  // =========================
+  // TREINOS / EXERCÍCIOS
+  // =========================
+
+  Future<int> criarExercicio(ExercicioModel exercicio) async {
+    final db = await instance.database;
+    return await TreinosDatabase.criarExercicio(db, exercicio);
+  }
+
+  Future<List<ExercicioModel>> listarExercicios() async {
+    final db = await instance.database;
+    return await TreinosDatabase.listarExercicios(db);
+  }
+
+  Future<List<ExercicioModel>> listarExerciciosPorCategoria(
+    String categoria,
+  ) async {
+    final db = await instance.database;
+    return await TreinosDatabase.listarExerciciosPorCategoria(db, categoria);
+  }
+
+  Future<ExercicioModel?> buscarExercicioPorId(int id) async {
+    final db = await instance.database;
+    return await TreinosDatabase.buscarExercicioPorId(db, id);
+  }
+
+  Future<int> atualizarExercicio(ExercicioModel exercicio) async {
+    final db = await instance.database;
+    return await TreinosDatabase.atualizarExercicio(db, exercicio);
+  }
+
+  Future<int> deletarExercicio(int id) async {
+    final db = await instance.database;
+    return await TreinosDatabase.deletarExercicio(db, id);
+  }
+
+  Future<int> alternarFavoritoExercicio({
+    required int id,
+    required int favorito,
+  }) async {
+    final db = await instance.database;
+
+    return await TreinosDatabase.alternarFavoritoExercicio(
+      db: db,
+      id: id,
+      favorito: favorito,
+    );
+  }
+
+  Future<int> criarTreino(TreinoModel treino) async {
+    final db = await instance.database;
+    return await TreinosDatabase.criarTreino(db, treino);
+  }
+
+  Future<List<TreinoModel>> listarTreinos() async {
+    final db = await instance.database;
+    return await TreinosDatabase.listarTreinos(db);
+  }
+
+  Future<List<TreinoModel>> listarTreinosPorCliente(int clienteId) async {
+    final db = await instance.database;
+    return await TreinosDatabase.listarTreinosPorCliente(db, clienteId);
+  }
+
+  Future<TreinoModel?> buscarTreinoPorId(int id) async {
+    final db = await instance.database;
+    return await TreinosDatabase.buscarTreinoPorId(db, id);
+  }
+
+  Future<int> atualizarTreino(TreinoModel treino) async {
+    final db = await instance.database;
+    return await TreinosDatabase.atualizarTreino(db, treino);
+  }
+
+  Future<int> deletarTreino(int id) async {
+    final db = await instance.database;
+    return await TreinosDatabase.deletarTreino(db, id);
+  }
+
+  Future<int> criarItemTreino(TreinoItemModel item) async {
+    final db = await instance.database;
+    return await TreinosDatabase.criarItemTreino(db, item);
+  }
+
+  Future<List<TreinoItemModel>> listarItensDoTreino(int treinoId) async {
+    final db = await instance.database;
+    return await TreinosDatabase.listarItensDoTreino(db, treinoId);
+  }
+
+  Future<int> atualizarItemTreino(TreinoItemModel item) async {
+    final db = await instance.database;
+    return await TreinosDatabase.atualizarItemTreino(db, item);
+  }
+
+  Future<int> deletarItemTreino(int id) async {
+    final db = await instance.database;
+    return await TreinosDatabase.deletarItemTreino(db, id);
+  }
+
+  Future<int> deletarItensDoTreino(int treinoId) async {
+    final db = await instance.database;
+    return await TreinosDatabase.deletarItensDoTreino(db, treinoId);
+  }
+
+  Future<int> salvarTreinoComItens({
+    required TreinoModel treino,
+    required List<TreinoItemModel> itens,
+  }) async {
+    final db = await instance.database;
+
+    return await TreinosDatabase.salvarTreinoComItens(
+      db: db,
+      treino: treino,
+      itens: itens,
+    );
+  }
+
+  Future<int> duplicarTreinoParaCliente({
+    required int treinoModeloId,
+    required int clienteId,
+  }) async {
+    final db = await instance.database;
+
+    return await TreinosDatabase.duplicarTreinoParaCliente(
+      db: db,
+      treinoModeloId: treinoModeloId,
+      clienteId: clienteId,
+    );
   }
 
   // =========================

@@ -5,6 +5,7 @@ import '../../database/app_database.dart';
 import '../../models/produto_model.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_button.dart';
+import '../../core/money_utils.dart';
 
 class ProdutoFormScreen extends StatefulWidget {
   final ProdutoModel? produto;
@@ -37,8 +38,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     if (editando) {
       nomeController.text = widget.produto!.nome;
       descricaoController.text = widget.produto!.descricao;
-      precoCustoController.text = widget.produto!.precoCusto.toStringAsFixed(2);
-      precoVendaController.text = widget.produto!.precoVenda.toStringAsFixed(2);
+      precoVendaController.text = MoneyUtils.format(widget.produto!.precoVenda);
+      precoCustoController.text = MoneyUtils.format(widget.produto!.precoCusto);
       estoqueController.text = widget.produto!.estoqueAtual.toStringAsFixed(0);
       unidade = widget.produto!.unidade;
       ativo = widget.produto!.ativo == 1;
@@ -56,14 +57,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   }
 
   double _parseValor(String value) {
-    return double.tryParse(
-          value
-              .replaceAll('R\$', '')
-              .replaceAll('.', '')
-              .replaceAll(',', '.')
-              .trim(),
-        ) ??
-        0;
+    return MoneyUtils.parse(value);
   }
 
   Future<void> salvar() async {

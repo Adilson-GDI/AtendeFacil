@@ -7,11 +7,10 @@ import '../../database/app_database.dart';
 import '../../models/app_config_model.dart';
 import '../../widgets/app_scaffold.dart';
 
-import 'package:provider/provider.dart';
-import '../../core/app_theme_controller.dart';
-
 class AparenciaScreen extends StatefulWidget {
-  const AparenciaScreen({super.key});
+  final bool primeiroAcesso;
+
+  const AparenciaScreen({super.key, this.primeiroAcesso = false});
 
   @override
   State<AparenciaScreen> createState() => _AparenciaScreenState();
@@ -19,8 +18,6 @@ class AparenciaScreen extends StatefulWidget {
 
 class _AparenciaScreenState extends State<AparenciaScreen> {
   final nomeController = TextEditingController();
-  final corPrimariaController = TextEditingController();
-  final corSecundariaController = TextEditingController();
 
   AppConfigModel? config;
   bool loading = true;
@@ -30,40 +27,56 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
   String corSecundaria = '#C9A46B';
 
   final List<String> coresPrimarias = [
+    '#0F172A',
+    '#111827',
+    '#1E293B',
+    '#334155',
     '#1B5CB1',
     '#123F7D',
     '#2563EB',
-    '#0891B2',
+    '#1D4ED8',
+    '#0E7490',
+    '#155E75',
     '#0F766E',
-    '#16A34A',
+    '#115E59',
+    '#166534',
+    '#365314',
+    '#581C87',
+    '#6D28D9',
     '#7C3AED',
-    '#9333EA',
-    '#DB2777',
-    '#BE123C',
-    '#DC2626',
-    '#EA580C',
-    '#CA8A04',
-    '#475569',
-    '#111827',
-    '#000000',
+    '#831843',
+    '#9D174D',
+    '#991B1B',
+    '#7F1D1D',
+    '#9A3412',
+    '#78350F',
+    '#3F3F46',
   ];
 
   final List<String> coresSecundarias = [
     '#C9A46B',
+    '#D4AF37',
+    '#B8860B',
+    '#A16207',
     '#F59E0B',
+    '#EAB308',
     '#FACC15',
-    '#D97706',
-    '#22C55E',
-    '#2DD4BF',
+    '#FDE68A',
+    '#94A3B8',
+    '#CBD5E1',
+    '#E5E7EB',
+    '#FFFFFF',
     '#38BDF8',
     '#60A5FA',
+    '#818CF8',
     '#A78BFA',
+    '#C084FC',
+    '#F0ABFC',
     '#F472B6',
     '#FB7185',
-    '#94A3B8',
-    '#64748B',
-    '#A3A3A3',
-    '#FFFFFF',
+    '#2DD4BF',
+    '#34D399',
+    '#86EFAC',
     '#111827',
   ];
 
@@ -76,8 +89,6 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
   @override
   void dispose() {
     nomeController.dispose();
-    corPrimariaController.dispose();
-    corSecundariaController.dispose();
     super.dispose();
   }
 
@@ -86,12 +97,8 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
 
     config = result;
     nomeController.text = result.nomeEmpresa;
-
     corPrimaria = result.corPrimaria;
     corSecundaria = result.corSecundaria;
-
-    corPrimariaController.text = corPrimaria;
-    corSecundariaController.text = corSecundaria;
 
     if (mounted) {
       setState(() => loading = false);
@@ -101,11 +108,6 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
   Color hexToColor(String hex) {
     final cleanHex = hex.replaceAll('#', '');
     return Color(int.parse('FF$cleanHex', radix: 16));
-  }
-
-  bool hexValido(String value) {
-    final regex = RegExp(r'^#([A-Fa-f0-9]{6})$');
-    return regex.hasMatch(value.trim());
   }
 
   Future<void> salvar() async {
@@ -131,6 +133,10 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aparência salva com sucesso.')),
       );
+
+      if (widget.primeiroAcesso) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      }
     }
   }
 
@@ -139,27 +145,17 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
     required String selected,
     required ValueChanged<String> onSelect,
   }) {
-    final active = hex == selected;
+    final active = hex.toUpperCase() == selected.toUpperCase();
     final color = hexToColor(hex);
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: () {
-        onSelect(hex);
-
-        if (selected == corPrimaria) {
-          corPrimariaController.text = hex;
-        }
-
-        if (selected == corSecundaria) {
-          corSecundariaController.text = hex;
-        }
-      },
+      onTap: () => onSelect(hex),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: 54,
-        height: 54,
-        margin: const EdgeInsets.only(right: 10, bottom: 10),
+        width: 48,
+        height: 48,
+        margin: const EdgeInsets.only(right: 9, bottom: 10),
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
@@ -169,7 +165,7 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.30),
+              color: color.withOpacity(hex == '#FFFFFF' ? 0.12 : 0.28),
               blurRadius: active ? 14 : 6,
               offset: const Offset(0, 5),
             ),
@@ -178,95 +174,42 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
         child: active
             ? Icon(
                 Icons.check_rounded,
-                color: hex == '#FFFFFF' ? AppColors.textDark : Colors.white,
-                size: 26,
+                color: hex == '#FFFFFF' || hex == '#FDE68A'
+                    ? AppColors.textDark
+                    : Colors.white,
+                size: 23,
               )
             : null,
       ),
     );
   }
 
-  Widget campoCorPersonalizada({
-    required String label,
-    required TextEditingController controller,
-    required ValueChanged<String> onApply,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(top: 4, bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: label,
-                hintText: '#1B5CB1',
-                filled: true,
-                fillColor: Colors.white,
-                prefixIcon: const Icon(Icons.color_lens_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          SizedBox(
-            height: 56,
-            child: ElevatedButton(
-              onPressed: () {
-                var value = controller.text.trim();
-
-                if (!value.startsWith('#')) {
-                  value = '#$value';
-                }
-
-                value = value.toUpperCase();
-
-                if (!hexValido(value)) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Informe uma cor válida. Exemplo: #1B5CB1'),
-                    ),
-                  );
-                  return;
-                }
-
-                controller.text = value;
-                onApply(value);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.textDark,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text(
-                'Aplicar',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget sectionTitle(String title) {
+  Widget sectionTitle(String title, String subtitle) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, top: 18),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.textDark,
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -282,6 +225,13 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
       decoration: BoxDecoration(
         color: primary,
         borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withOpacity(0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -295,16 +245,18 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
               nomeController.text.trim().isEmpty
                   ? 'Atende Fácil'
                   : nomeController.text.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),
           Container(
-            width: 42,
-            height: 4,
+            width: 48,
+            height: 5,
             decoration: BoxDecoration(
               color: secondary,
               borderRadius: BorderRadius.circular(10),
@@ -318,87 +270,89 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
     );
   }
 
+  Widget nomeEmpresaInput() {
+    return TextField(
+      controller: nomeController,
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: 'Nome da empresa',
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: const Icon(Icons.storefront_rounded),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget painelCores({
+    required List<String> cores,
+    required String selected,
+    required ValueChanged<String> onSelect,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 6, 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border.withOpacity(0.75)),
+      ),
+      child: Wrap(
+        children: cores.map((hex) {
+          return colorOption(hex: hex, selected: selected, onSelect: onSelect);
+        }).toList(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final primary = hexToColor(corPrimaria);
 
     return AppScaffold(
-      title: 'Aparência',
-      subtitle: 'Personalização do app',
+      title: widget.primeiroAcesso ? 'Personalização' : 'Aparência',
+      subtitle: widget.primeiroAcesso
+          ? 'Escolha as cores do seu app'
+          : 'Personalização do app',
       currentIndex: 4,
-      showBack: true,
+      showBack: !widget.primeiroAcesso,
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
               children: [
                 previewCard(),
-
                 const SizedBox(height: 18),
 
-                TextField(
-                  controller: nomeController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'Nome da empresa',
-                    filled: true,
-                    fillColor: Colors.white,
-                    prefixIcon: const Icon(Icons.storefront_rounded),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+                nomeEmpresaInput(),
+
+                sectionTitle(
+                  'Cor principal',
+                  'Define cabeçalho, botões e destaques do app.',
                 ),
 
-                sectionTitle('Cor principal'),
-
-                campoCorPersonalizada(
-                  label: 'Cor principal personalizada',
-                  controller: corPrimariaController,
-                  onApply: (value) {
+                painelCores(
+                  cores: coresPrimarias,
+                  selected: corPrimaria,
+                  onSelect: (value) {
                     setState(() => corPrimaria = value);
                   },
                 ),
 
-                Wrap(
-                  children: coresPrimarias.map((hex) {
-                    return colorOption(
-                      hex: hex,
-                      selected: corPrimaria,
-                      onSelect: (value) {
-                        setState(() {
-                          corPrimaria = value;
-                          corPrimariaController.text = value;
-                        });
-                      },
-                    );
-                  }).toList(),
+                sectionTitle(
+                  'Cor secundária / filete',
+                  'Use para detalhes, linhas e acabamento visual.',
                 ),
 
-                sectionTitle('Cor secundária / filete'),
-
-                campoCorPersonalizada(
-                  label: 'Cor secundária personalizada',
-                  controller: corSecundariaController,
-                  onApply: (value) {
+                painelCores(
+                  cores: coresSecundarias,
+                  selected: corSecundaria,
+                  onSelect: (value) {
                     setState(() => corSecundaria = value);
                   },
-                ),
-
-                Wrap(
-                  children: coresSecundarias.map((hex) {
-                    return colorOption(
-                      hex: hex,
-                      selected: corSecundaria,
-                      onSelect: (value) {
-                        setState(() {
-                          corSecundaria = value;
-                          corSecundariaController.text = value;
-                        });
-                      },
-                    );
-                  }).toList(),
                 ),
 
                 const SizedBox(height: 22),
@@ -424,9 +378,11 @@ class _AparenciaScreenState extends State<AparenciaScreen> {
                               strokeWidth: 2.4,
                             ),
                           )
-                        : const Text(
-                            'Salvar aparência',
-                            style: TextStyle(fontWeight: FontWeight.w800),
+                        : Text(
+                            widget.primeiroAcesso
+                                ? 'Finalizar configuração'
+                                : 'Salvar aparência',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                   ),
                 ),

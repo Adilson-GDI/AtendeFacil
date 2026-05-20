@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "596522732699",
+    "project_id": "atendefacil-a7730",
+    "storage_bucket": "atendefacil-a7730.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:596522732699:android:13c9158864ed2fffc14a3e",
+        "android_client_info": {
+          "package_name": "com.example.atende_facil"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCu7ucA-bJnHE2lqNOYaZ6FLwM5kBdVztc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

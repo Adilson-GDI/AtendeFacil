@@ -5,6 +5,7 @@ import '../../database/app_database.dart';
 import '../../models/servico_model.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_button.dart';
+import '../../core/money_utils.dart';
 
 class ServicoFormScreen extends StatefulWidget {
   final ServicoModel? servico;
@@ -34,7 +35,7 @@ class _ServicoFormScreenState extends State<ServicoFormScreen> {
     if (editando) {
       nomeController.text = widget.servico!.nome;
       descricaoController.text = widget.servico!.descricao;
-      valorController.text = widget.servico!.valorPadrao.toStringAsFixed(2);
+      valorController.text = MoneyUtils.format(widget.servico!.valorPadrao);
       ativo = widget.servico!.ativo == 1;
     }
   }
@@ -48,14 +49,7 @@ class _ServicoFormScreenState extends State<ServicoFormScreen> {
   }
 
   double _parseValor(String value) {
-    return double.tryParse(
-          value
-              .replaceAll('R\$', '')
-              .replaceAll('.', '')
-              .replaceAll(',', '.')
-              .trim(),
-        ) ??
-        0;
+    return MoneyUtils.parse(value);
   }
 
   Future<void> salvar() async {

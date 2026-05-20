@@ -7,6 +7,8 @@ class AppConfigModel {
 
   final String telefone;
   final String whatsapp;
+  final String email;
+  final String cep;
   final String instagram;
   final String documento;
   final String endereco;
@@ -25,8 +27,10 @@ class AppConfigModel {
     required this.corPrimaria,
     required this.corSecundaria,
     this.logoPath,
-    required this.telefone,
+    this.telefone = '',
     required this.whatsapp,
+    this.email = '',
+    this.cep = '',
     required this.instagram,
     required this.documento,
     required this.endereco,
@@ -47,6 +51,8 @@ class AppConfigModel {
       'logo_path': logoPath,
       'telefone': telefone,
       'whatsapp': whatsapp,
+      'email': email,
+      'cep': cep,
       'instagram': instagram,
       'documento': documento,
       'endereco': endereco,
@@ -68,6 +74,8 @@ class AppConfigModel {
       logoPath: map['logo_path'],
       telefone: map['telefone'] ?? '',
       whatsapp: map['whatsapp'] ?? '',
+      email: map['email'] ?? '',
+      cep: map['cep'] ?? '',
       instagram: map['instagram'] ?? '',
       documento: map['documento'] ?? '',
       endereco: map['endereco'] ?? '',
@@ -92,6 +100,8 @@ class AppConfigModel {
     String? logoPath,
     String? telefone,
     String? whatsapp,
+    String? email,
+    String? cep,
     String? instagram,
     String? documento,
     String? endereco,
@@ -110,6 +120,8 @@ class AppConfigModel {
       logoPath: logoPath ?? this.logoPath,
       telefone: telefone ?? this.telefone,
       whatsapp: whatsapp ?? this.whatsapp,
+      email: email ?? this.email,
+      cep: cep ?? this.cep,
       instagram: instagram ?? this.instagram,
       documento: documento ?? this.documento,
       endereco: endereco ?? this.endereco,

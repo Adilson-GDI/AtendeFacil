@@ -7,6 +7,7 @@ import '../../models/ordem_servico_model.dart';
 import '../../models/pagamento_model.dart';
 import '../../widgets/app_scaffold.dart';
 import '../ordens/ordem_form_screen.dart';
+import '../../core/money_utils.dart';
 
 class FinanceiroScreen extends StatefulWidget {
   const FinanceiroScreen({super.key});
@@ -56,14 +57,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   }
 
   double parseValor(String value) {
-    return double.tryParse(
-          value
-              .replaceAll('R\$', '')
-              .replaceAll('.', '')
-              .replaceAll(',', '.')
-              .trim(),
-        ) ??
-        0;
+    return MoneyUtils.parse(value);
   }
 
   OrdemServicoModel? buscarOrdem(int ordemId) {
@@ -164,169 +158,190 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (_) {
+      builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 18,
-                right: 18,
-                top: 22,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Registrar pagamento',
-                    style: TextStyle(
-                      color: AppColors.textDark,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'OS #${ordem.id} • ${ordem.titulo}',
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  TextField(
-                    controller: valorController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: 'Valor pago',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      prefixIcon: const Icon(Icons.payments_rounded),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 18,
+                  right: 18,
+                  top: 22,
+                  bottom: MediaQuery.of(modalContext).viewInsets.bottom + 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: formaPagamento,
-                    decoration: InputDecoration(
-                      labelText: 'Forma de pagamento',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                    const SizedBox(height: 18),
+
+                    const Text(
+                      'Registrar pagamento',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'PIX', child: Text('Pix')),
-                      DropdownMenuItem(
-                        value: 'DINHEIRO',
-                        child: Text('Dinheiro'),
-                      ),
-                      DropdownMenuItem(value: 'CARTAO', child: Text('Cartão')),
-                      DropdownMenuItem(value: 'BOLETO', child: Text('Boleto')),
-                      DropdownMenuItem(value: 'OUTRO', child: Text('Outro')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setModalState(() => formaPagamento = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: observacoesController,
-                    decoration: InputDecoration(
-                      labelText: 'Observações',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      prefixIcon: const Icon(Icons.notes_rounded),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      'OS #${ordem.id} • ${ordem.titulo}',
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: salvando
-                          ? null
-                          : () async {
-                              final valor = parseValor(valorController.text);
 
-                              if (valor <= 0) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Informe um valor válido'),
-                                  ),
-                                );
-                                return;
-                              }
+                    const SizedBox(height: 18),
 
-                              setModalState(() => salvando = true);
-
-                              final agora = DateTime.now().toIso8601String();
-
-                              await AppDatabase.instance.criarPagamento(
-                                PagamentoModel(
-                                  ordemServicoId: ordem.id!,
-                                  valor: valor,
-                                  formaPagamento: formaPagamento,
-                                  status: 'PAGO',
-                                  dataPagamento: agora,
-                                  observacoes: observacoesController.text
-                                      .trim(),
-                                  createdAt: agora,
-                                ),
-                              );
-
-                              if (mounted) {
-                                Navigator.pop(context);
-                                carregarDados();
-                              }
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
+                    TextField(
+                      controller: valorController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Valor pago',
+                        filled: true,
+                        fillColor: AppColors.background,
+                        prefixIcon: const Icon(Icons.payments_rounded),
+                        border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
                         ),
                       ),
-                      child: salvando
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2.4,
-                              ),
-                            )
-                          : const Text(
-                              'Salvar pagamento',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 12),
+
+                    DropdownButtonFormField<String>(
+                      value: formaPagamento,
+                      decoration: InputDecoration(
+                        labelText: 'Forma de pagamento',
+                        filled: true,
+                        fillColor: AppColors.background,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'PIX', child: Text('Pix')),
+                        DropdownMenuItem(
+                          value: 'DINHEIRO',
+                          child: Text('Dinheiro'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'CARTAO',
+                          child: Text('Cartão'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'BOLETO',
+                          child: Text('Boleto'),
+                        ),
+                        DropdownMenuItem(value: 'OUTRO', child: Text('Outro')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setModalState(() => formaPagamento = value);
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    TextField(
+                      controller: observacoesController,
+                      decoration: InputDecoration(
+                        labelText: 'Observações',
+                        filled: true,
+                        fillColor: AppColors.background,
+                        prefixIcon: const Icon(Icons.notes_rounded),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: salvando
+                            ? null
+                            : () async {
+                                final valor = parseValor(valorController.text);
+
+                                if (valor <= 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Informe um valor válido'),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                setModalState(() => salvando = true);
+
+                                final agora = DateTime.now().toIso8601String();
+
+                                await AppDatabase.instance.criarPagamento(
+                                  PagamentoModel(
+                                    ordemServicoId: ordem.id!,
+                                    valor: valor,
+                                    formaPagamento: formaPagamento,
+                                    status: 'PAGO',
+                                    dataPagamento: agora,
+                                    observacoes: observacoesController.text
+                                        .trim(),
+                                    createdAt: agora,
+                                  ),
+                                );
+
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                  carregarDados();
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: salvando
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2.4,
+                                ),
+                              )
+                            : const Text(
+                                'Salvar pagamento',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },

@@ -49,6 +49,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
         '${data.month.toString().padLeft(2, '0')}';
   }
 
+  String dataBrCompleta(DateTime data) {
+    return '${data.day.toString().padLeft(2, '0')}/'
+        '${data.month.toString().padLeft(2, '0')}/'
+        '${data.year}';
+  }
+
   DateTime inicioSemana(DateTime data) {
     return data.subtract(Duration(days: data.weekday - 1));
   }
@@ -97,15 +103,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
         final itens = await AppDatabase.instance
             .listarAgendaDoDiaComRecorrencia(data);
 
-        if (itens.isNotEmpty) {
-          agendaAgrupada[dataBr(data)] = itens;
-        }
+        agendaAgrupada[dataBr(data)] = itens;
       }
     }
 
     if (visualizacao == 'MES') {
       final inicio = DateTime(dataSelecionada.year, dataSelecionada.month, 1);
-
       final fim = DateTime(dataSelecionada.year, dataSelecionada.month + 1, 0);
 
       DateTime atual = inicio;
@@ -114,9 +117,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
         final itens = await AppDatabase.instance
             .listarAgendaDoDiaComRecorrencia(atual);
 
-        if (itens.isNotEmpty) {
-          agendaAgrupada[dataBr(atual)] = itens;
-        }
+        agendaAgrupada[dataBr(atual)] = itens;
 
         atual = atual.add(const Duration(days: 1));
       }
@@ -128,7 +129,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     required DateTime fim,
   }) async {
     int total = 0;
-
     DateTime atual = inicio;
 
     while (!atual.isAfter(fim)) {
@@ -142,6 +142,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
 
     return total;
+  }
+
+  int quantidadeDoDia(DateTime data) {
+    final key = dataBr(data);
+    final itens = agendaAgrupada[key] ?? [];
+
+    return itens.where((i) => i.status != 'CANCELADO').length;
   }
 
   Future<void> abrirFormulario({AgendaModel? item}) async {
@@ -173,7 +180,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
   String diaSemana(DateTime data) {
     const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-
     return dias[data.weekday - 1];
   }
 
@@ -213,39 +219,28 @@ Horário: ${item.horaInicio}
   }) {
     return Expanded(
       child: Container(
-        height: 84,
-        padding: const EdgeInsets.all(12),
+        height: 54,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withOpacity(0.18)),
+          color: color.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.12), width: 0.7),
         ),
         child: Row(
           children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 10),
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 6),
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    total.toString(),
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+              child: Text(
+                '$total\n$label',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
+                ),
               ),
             ),
           ],
@@ -254,15 +249,44 @@ Horário: ${item.horaInicio}
     );
   }
 
+  Widget filtroVisualizacao(String value, String label) {
+    final selected = visualizacao == value;
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Expanded(
+      child: InkWell(
+        onTap: () async {
+          setState(() => visualizacao = value);
+          await carregarAgenda();
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: selected ? Colors.white : AppColors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget diaChip(DateTime data) {
     final selected = dataSql(data) == dataSql(dataSelecionada);
-
     final primary = Theme.of(context).colorScheme.primary;
 
     return InkWell(
       onTap: () async {
         setState(() => dataSelecionada = data);
-
         await carregarAgenda();
       },
       borderRadius: BorderRadius.circular(18),
@@ -372,53 +396,352 @@ Horário: ${item.horaInicio}
   }
 
   Widget agrupamentoAgenda() {
-    if (visualizacao == 'DIA') {
-      if (agenda.isEmpty) {
-        return const Text(
-          'Nenhum atendimento agendado',
-          style: TextStyle(color: AppColors.textMuted),
-        );
-      }
-
-      return Column(children: agenda.map(agendaCard).toList());
-    }
-
-    if (agendaAgrupada.isEmpty) {
+    if (agenda.isEmpty) {
       return const Text(
-        'Nenhum atendimento encontrado',
+        'Nenhum atendimento agendado',
         style: TextStyle(color: AppColors.textMuted),
       );
     }
 
-    return Column(
-      children: agendaAgrupada.entries.map((entry) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 8),
+    return Column(children: agenda.map(agendaCard).toList());
+  }
+
+  Widget cabecalhoCalendario() {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border, width: 0.7),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: () async {
+              setState(() {
+                if (visualizacao == 'SEMANA') {
+                  dataSelecionada = dataSelecionada.subtract(
+                    const Duration(days: 7),
+                  );
+                } else {
+                  dataSelecionada = DateTime(
+                    dataSelecionada.year,
+                    dataSelecionada.month - 1,
+                    1,
+                  );
+                }
+              });
+
+              await carregarAgenda();
+            },
+            icon: const Icon(Icons.chevron_left_rounded),
+          ),
+          Expanded(
+            child: Center(
               child: Text(
-                entry.key,
+                visualizacao == 'SEMANA'
+                    ? '${dataBr(inicioSemana(dataSelecionada))} até ${dataBr(fimSemana(dataSelecionada))}'
+                    : '${dataSelecionada.month.toString().padLeft(2, '0')}/${dataSelecionada.year}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: AppColors.textDark,
-                  fontSize: 17,
+                  fontSize: 14,
                   fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
                 ),
               ),
             ),
-            ...entry.value.map(agendaCard),
-          ],
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: () async {
+              setState(() {
+                if (visualizacao == 'SEMANA') {
+                  dataSelecionada = dataSelecionada.add(
+                    const Duration(days: 7),
+                  );
+                } else {
+                  dataSelecionada = DateTime(
+                    dataSelecionada.year,
+                    dataSelecionada.month + 1,
+                    1,
+                  );
+                }
+              });
+
+              await carregarAgenda();
+            },
+            icon: const Icon(Icons.chevron_right_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget calendarioSemana() {
+    final inicio = inicioSemana(dataSelecionada);
+    final dias = List.generate(7, (index) => inicio.add(Duration(days: index)));
+
+    return Column(
+      children: dias.map((data) {
+        final key = dataBr(data);
+        final itens = agendaAgrupada[key] ?? [];
+        final total = itens.where((i) => i.status != 'CANCELADO').length;
+        final selected = dataSql(data) == dataSql(dataSelecionada);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selected
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.06)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary.withOpacity(0.35)
+                  : AppColors.border,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withOpacity(0.10),
+                    child: Text(
+                      data.day.toString().padLeft(2, '0'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${diaSemana(data)} - ${dataBrCompleta(data)}',
+                      style: const TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: total > 0
+                          ? AppColors.success.withOpacity(0.10)
+                          : AppColors.textMuted.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      total > 0 ? '$total atend.' : 'Livre',
+                      style: TextStyle(
+                        color: total > 0
+                            ? AppColors.success
+                            : AppColors.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              if (itens.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(left: 46, bottom: 4),
+                  child: Text(
+                    'Nenhum horário agendado',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else
+                Column(
+                  children: itens.map((item) {
+                    return agendaCard(item);
+                  }).toList(),
+                ),
+            ],
+          ),
         );
       }).toList(),
+    );
+  }
+
+  Widget legendaDiasSemana() {
+    const dias = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+
+    return Row(
+      children: dias.map((dia) {
+        return Expanded(
+          child: Center(
+            child: Text(
+              dia,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget calendarioMes() {
+    final primeiroDia = DateTime(
+      dataSelecionada.year,
+      dataSelecionada.month,
+      1,
+    );
+    final ultimoDia = DateTime(
+      dataSelecionada.year,
+      dataSelecionada.month + 1,
+      0,
+    );
+
+    final diasAntes = primeiroDia.weekday - 1;
+    final totalCelulas = diasAntes + ultimoDia.day;
+
+    return Column(
+      children: [
+        legendaDiasSemana(),
+        const SizedBox(height: 6),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: totalCelulas,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            childAspectRatio: 1.05,
+          ),
+          itemBuilder: (_, index) {
+            if (index < diasAntes) {
+              return const SizedBox();
+            }
+
+            final dia = index - diasAntes + 1;
+            final data = DateTime(
+              dataSelecionada.year,
+              dataSelecionada.month,
+              dia,
+            );
+
+            final total = quantidadeDoDia(data);
+            final selected = dataSql(data) == dataSql(dataSelecionada);
+
+            return InkWell(
+              onTap: () async {
+                setState(() {
+                  dataSelecionada = data;
+                  visualizacao = 'DIA';
+                });
+
+                await carregarAgenda();
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary.withOpacity(0.10)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    width: 0.6,
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary
+                        : AppColors.border,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Text(
+                        dia.toString(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: selected
+                              ? Theme.of(context).colorScheme.primary
+                              : AppColors.textDark,
+                        ),
+                      ),
+                    ),
+                    if (total > 0)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          height: 16,
+                          constraints: const BoxConstraints(minWidth: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            total.toString(),
+                            style: const TextStyle(
+                              color: AppColors.success,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget visualizacaoAgenda() {
+    if (visualizacao == 'DIA') {
+      return agrupamentoAgenda();
+    }
+
+    return Column(
+      children: [
+        cabecalhoCalendario(),
+        const SizedBox(height: 10),
+        if (visualizacao == 'SEMANA') calendarioSemana(),
+        if (visualizacao == 'MES') calendarioMes(),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-
     final inicio = inicioSemana(dataSelecionada);
-
     final dias = List.generate(7, (index) => inicio.add(Duration(days: index)));
 
     return AppScaffold(
@@ -429,91 +752,68 @@ Horário: ${item.horaInicio}
       floatingActionButton: AppFab(onPressed: () => abrirFormulario()),
       body: RefreshIndicator(
         onRefresh: carregarAgenda,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
-          children: [
-            Row(
-              children: [
-                resumoCard(
-                  label: 'Hoje',
-                  total: totalDia,
-                  icon: Icons.today_rounded,
-                  color: primary,
-                ),
-                const SizedBox(width: 10),
-                resumoCard(
-                  label: 'Semana',
-                  total: totalSemana,
-                  icon: Icons.view_week_rounded,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-                const SizedBox(width: 10),
-                resumoCard(
-                  label: 'Mês',
-                  total: totalMes,
-                  icon: Icons.calendar_month_rounded,
-                  color: AppColors.success,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 18),
-
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                 children: [
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Text('Dia'),
-                      selected: visualizacao == 'DIA',
-                      onSelected: (_) async {
-                        visualizacao = 'DIA';
-                        await carregarAgenda();
-                      },
+                  Row(
+                    children: [
+                      resumoCard(
+                        label: 'Hoje',
+                        total: totalDia,
+                        icon: Icons.today_rounded,
+                        color: primary,
+                      ),
+                      const SizedBox(width: 8),
+                      resumoCard(
+                        label: 'Semana',
+                        total: totalSemana,
+                        icon: Icons.view_week_rounded,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                      const SizedBox(width: 8),
+                      resumoCard(
+                        label: 'Mês',
+                        total: totalMes,
+                        icon: Icons.calendar_month_rounded,
+                        color: AppColors.success,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Container(
+                    height: 40,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.border, width: 0.7),
+                    ),
+                    child: Row(
+                      children: [
+                        filtroVisualizacao('DIA', 'Dia'),
+                        filtroVisualizacao('SEMANA', 'Semana'),
+                        filtroVisualizacao('MES', 'Mês'),
+                      ],
                     ),
                   ),
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Text('Semana'),
-                      selected: visualizacao == 'SEMANA',
-                      onSelected: (_) async {
-                        visualizacao = 'SEMANA';
-                        await carregarAgenda();
-                      },
+
+                  const SizedBox(height: 12),
+
+                  if (visualizacao == 'DIA') ...[
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: dias.map(diaChip).toList()),
                     ),
-                  ),
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Text('Mês'),
-                      selected: visualizacao == 'MES',
-                      onSelected: (_) async {
-                        visualizacao = 'MES';
-                        await carregarAgenda();
-                      },
-                    ),
-                  ),
+                    const SizedBox(height: 18),
+                  ],
+
+                  visualizacaoAgenda(),
                 ],
               ),
-            ),
-
-            const SizedBox(height: 18),
-
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: dias.map(diaChip).toList()),
-            ),
-
-            const SizedBox(height: 18),
-
-            agrupamentoAgenda(),
-          ],
-        ),
       ),
     );
   }

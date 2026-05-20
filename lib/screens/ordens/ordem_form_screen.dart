@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_colors.dart';
+import '../../core/money_utils.dart';
 import '../../database/app_database.dart';
 import '../../models/cliente_model.dart';
 import '../../models/ordem_servico_item_model.dart';
 import '../../models/ordem_servico_model.dart';
 import '../../models/produto_model.dart';
 import '../../models/servico_model.dart';
-import '../../widgets/app_scaffold.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/app_scaffold.dart';
 
 class OrdemFormScreen extends StatefulWidget {
   final OrdemServicoModel? ordem;
@@ -68,8 +69,8 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
       clienteId = ordem.clienteId;
       tituloController.text = ordem.titulo;
       descricaoController.text = ordem.descricao;
-      descontoController.text = ordem.desconto.toStringAsFixed(2);
-      acrescimoController.text = ordem.acrescimo.toStringAsFixed(2);
+      descontoController.text = MoneyUtils.format(ordem.desconto);
+      acrescimoController.text = MoneyUtils.format(ordem.acrescimo);
       observacoesController.text = ordem.observacoes;
       status = ordem.status;
 
@@ -82,14 +83,7 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
   }
 
   double parseValor(String value) {
-    return double.tryParse(
-          value
-              .replaceAll('R\$', '')
-              .replaceAll('.', '')
-              .replaceAll(',', '.')
-              .trim(),
-        ) ??
-        0;
+    return MoneyUtils.parse(value);
   }
 
   double get subtotal {
@@ -131,149 +125,155 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
   }) async {
     final quantidadeController = TextEditingController(text: '1');
     final valorController = TextEditingController(
-      text: valorInicial.toStringAsFixed(2),
+      text: MoneyUtils.format(valorInicial),
     );
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (_) {
+      builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             final quantidade = parseValor(quantidadeController.text);
             final valor = parseValor(valorController.text);
             final totalItem = quantidade * valor;
 
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 18,
-                right: 18,
-                top: 22,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    descricao,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.textDark,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  TextFormField(
-                    controller: quantidadeController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setModalState(() {}),
-                    decoration: InputDecoration(
-                      labelText: 'Quantidade',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 18,
+                  right: 18,
+                  top: 22,
+                  bottom: MediaQuery.of(modalContext).viewInsets.bottom + 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: valorController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setModalState(() {}),
-                    decoration: InputDecoration(
-                      labelText: 'Valor unitário',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                    const SizedBox(height: 18),
+                    Text(
+                      descricao,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Total do item',
-                          style: TextStyle(color: AppColors.textMuted),
+                    const SizedBox(height: 18),
+                    TextFormField(
+                      controller: quantidadeController,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setModalState(() {}),
+                      decoration: InputDecoration(
+                        labelText: 'Quantidade',
+                        filled: true,
+                        fillColor: AppColors.background,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          dinheiro(totalItem),
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: valorController,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setModalState(() {}),
+                      decoration: InputDecoration(
+                        labelText: 'Valor unitário',
+                        filled: true,
+                        fillColor: AppColors.background,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Total do item',
+                            style: TextStyle(color: AppColors.textMuted),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            dinheiro(totalItem),
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          if (quantidade <= 0) return;
+
+                          final agora = DateTime.now().toIso8601String();
+
+                          setState(() {
+                            itens.add(
+                              OrdemServicoItemModel(
+                                ordemServicoId: widget.ordem?.id ?? 0,
+                                tipo: tipo,
+                                servicoId: servicoId,
+                                produtoId: produtoId,
+                                descricao: descricao,
+                                quantidade: quantidade,
+                                valorUnitario: valor,
+                                valorTotal: totalItem,
+                                createdAt: agora,
+                              ),
+                            );
+                          });
+
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        if (quantidade <= 0) return;
-
-                        final agora = DateTime.now().toIso8601String();
-
-                        setState(() {
-                          itens.add(
-                            OrdemServicoItemModel(
-                              ordemServicoId: widget.ordem?.id ?? 0,
-                              tipo: tipo,
-                              servicoId: servicoId,
-                              produtoId: produtoId,
-                              descricao: descricao,
-                              quantidade: quantidade,
-                              valorUnitario: valor,
-                              valorTotal: totalItem,
-                              createdAt: agora,
-                            ),
-                          );
-                        });
-
-                        Navigator.pop(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                        child: const Text(
+                          'Adicionar item',
+                          style: TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
-                      child: const Text(
-                        'Adicionar item',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -288,89 +288,110 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
   Future<void> abrirAdicionarItem() async {
     await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (_) {
-        return DefaultTabController(
-          length: 2,
+      builder: (modalContext) {
+        return SafeArea(
+          top: false,
           child: SizedBox(
-            height: 430,
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 46,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(20),
+            height: MediaQuery.of(modalContext).size.height * 0.75,
+            child: DefaultTabController(
+              length: 2,
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 46,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const TabBar(
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor: AppColors.textMuted,
-                  indicatorColor: AppColors.gold,
-                  tabs: [
-                    Tab(text: 'Serviços'),
-                    Tab(text: 'Produtos'),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      servicos.isEmpty
-                          ? const Center(
-                              child: Text('Nenhum serviço cadastrado'),
-                            )
-                          : ListView.builder(
-                              itemCount: servicos.length,
-                              itemBuilder: (context, index) {
-                                final servico = servicos[index];
-
-                                return ListTile(
-                                  leading: const Icon(
-                                    Icons.build_circle_rounded,
-                                  ),
-                                  title: Text(servico.nome),
-                                  subtitle: Text(dinheiro(servico.valorPadrao)),
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    adicionarServico(servico);
-                                  },
-                                );
-                              },
-                            ),
-                      produtos.isEmpty
-                          ? const Center(
-                              child: Text('Nenhum produto cadastrado'),
-                            )
-                          : ListView.builder(
-                              itemCount: produtos.length,
-                              itemBuilder: (context, index) {
-                                final produto = produtos[index];
-
-                                return ListTile(
-                                  leading: const Icon(
-                                    Icons.inventory_2_rounded,
-                                  ),
-                                  title: Text(produto.nome),
-                                  subtitle: Text(
-                                    '${dinheiro(produto.precoVenda)} • Estoque: ${produto.estoqueAtual.toStringAsFixed(0)} ${produto.unidade}',
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    adicionarProduto(produto);
-                                  },
-                                );
-                              },
-                            ),
+                  const SizedBox(height: 12),
+                  const TabBar(
+                    labelColor: AppColors.primary,
+                    unselectedLabelColor: AppColors.textMuted,
+                    indicatorColor: AppColors.gold,
+                    tabs: [
+                      Tab(text: 'Serviços'),
+                      Tab(text: 'Produtos'),
                     ],
                   ),
-                ),
-              ],
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        servicos.isEmpty
+                            ? const Center(
+                                child: Text('Nenhum serviço cadastrado'),
+                              )
+                            : ListView.builder(
+                                padding: EdgeInsets.only(
+                                  bottom:
+                                      MediaQuery.of(
+                                        modalContext,
+                                      ).viewInsets.bottom +
+                                      24,
+                                ),
+                                itemCount: servicos.length,
+                                itemBuilder: (context, index) {
+                                  final servico = servicos[index];
+
+                                  return ListTile(
+                                    leading: const Icon(
+                                      Icons.build_circle_rounded,
+                                    ),
+                                    title: Text(servico.nome),
+                                    subtitle: Text(
+                                      dinheiro(servico.valorPadrao),
+                                    ),
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      adicionarServico(servico);
+                                    },
+                                  );
+                                },
+                              ),
+                        produtos.isEmpty
+                            ? const Center(
+                                child: Text('Nenhum produto cadastrado'),
+                              )
+                            : ListView.builder(
+                                padding: EdgeInsets.only(
+                                  bottom:
+                                      MediaQuery.of(
+                                        modalContext,
+                                      ).viewInsets.bottom +
+                                      24,
+                                ),
+                                itemCount: produtos.length,
+                                itemBuilder: (context, index) {
+                                  final produto = produtos[index];
+
+                                  return ListTile(
+                                    leading: const Icon(
+                                      Icons.inventory_2_rounded,
+                                    ),
+                                    title: Text(produto.nome),
+                                    subtitle: Text(
+                                      '${dinheiro(produto.precoVenda)} • Estoque: ${produto.estoqueAtual.toStringAsFixed(0)} ${produto.unidade}',
+                                    ),
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      adicionarProduto(produto);
+                                    },
+                                  );
+                                },
+                              ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -394,21 +415,43 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
 
     final agora = DateTime.now().toIso8601String();
 
+    double valorPagoAtual = 0;
+
+    if (widget.ordem?.id != null) {
+      valorPagoAtual = await AppDatabase.instance.totalPagoDaOrdem(
+        widget.ordem!.id!,
+      );
+    }
+
+    final valorPendenteAtual = total - valorPagoAtual;
+
+    String statusFinal = status;
+
+    if (valorPagoAtual >= total && total > 0) {
+      statusFinal = 'PAGO';
+    } else if (valorPagoAtual > 0 && valorPagoAtual < total) {
+      statusFinal = 'AGUARDANDO_PAGAMENTO';
+    } else if (status == 'PAGO' && valorPagoAtual <= 0) {
+      statusFinal = 'AGUARDANDO_PAGAMENTO';
+    }
+
     final ordem = OrdemServicoModel(
       id: widget.ordem?.id,
       clienteId: clienteId,
       titulo: tituloController.text.trim(),
       descricao: descricaoController.text.trim(),
-      status: status,
+      status: statusFinal,
       dataAbertura: widget.ordem?.dataAbertura ?? agora,
       dataPrevisao: null,
-      dataConclusao: status == 'CONCLUIDO' || status == 'PAGO' ? agora : null,
+      dataConclusao: statusFinal == 'CONCLUIDO' || statusFinal == 'PAGO'
+          ? agora
+          : null,
       subtotal: subtotal,
       desconto: desconto,
       acrescimo: acrescimo,
       total: total,
-      valorPago: status == 'PAGO' ? total : 0,
-      valorPendente: status == 'PAGO' ? 0 : total,
+      valorPago: valorPagoAtual,
+      valorPendente: valorPendenteAtual < 0 ? 0 : valorPendenteAtual,
       observacoes: observacoesController.text.trim(),
       createdAt: widget.ordem?.createdAt ?? agora,
       updatedAt: editando ? agora : null,
@@ -438,7 +481,7 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
         decoration: InputDecoration(
           filled: true,
           fillColor: Colors.white,
-          prefixIcon: Icon(icon, color: AppColors.navInactive),
+          prefixIcon: Icon(icon, color: AppColors.navInactive, size: 20),
           labelText: label,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
@@ -446,6 +489,135 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget valorInput({
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        labelText: label,
+        prefixText: 'R\$ ',
+        prefixStyle: const TextStyle(
+          color: AppColors.textDark,
+          fontWeight: FontWeight.w800,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget clienteDropdown() {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return DropdownButtonFormField<int>(
+      value: clienteId,
+      isExpanded: true,
+      icon: const Icon(
+        Icons.keyboard_arrow_down_rounded,
+        color: AppColors.textMuted,
+      ),
+      selectedItemBuilder: (context) {
+        return clientes.map((cliente) {
+          return Row(
+            children: [
+              Icon(
+                Icons.person_rounded,
+                size: 18,
+                color: primary.withOpacity(0.75),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  cliente.nome,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }).toList();
+      },
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        labelText: 'Cliente',
+        prefixIcon: Icon(
+          Icons.people_alt_rounded,
+          color: primary.withOpacity(0.75),
+          size: 20,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      dropdownColor: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      menuMaxHeight: 320,
+      items: clientes.map((cliente) {
+        return DropdownMenuItem<int>(
+          value: cliente.id,
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.person_rounded, size: 16, color: primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  cliente.nome,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (cliente.telefone.isNotEmpty)
+                Text(
+                  cliente.telefone,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+            ],
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() => clienteId = value);
+      },
     );
   }
 
@@ -505,12 +677,90 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
     );
   }
 
+  Widget totaisCard() {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border.withOpacity(0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Resumo financeiro',
+            style: TextStyle(
+              color: AppColors.textDark,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          linhaTotal('Subtotal', subtotal),
+          linhaTotal('Desconto', desconto),
+          linhaTotal('Acréscimo', acrescimo),
+          const Divider(height: 22),
+          const Text(
+            'Total',
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            dinheiro(total),
+            textAlign: TextAlign.left,
+            style: TextStyle(
+              color: primary,
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget linhaTotal(String label, double valor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            dinheiro(valor),
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
       title: editando ? 'Editar OS' : 'Nova OS',
       subtitle: 'Ordem de serviço',
-      currentIndex: 2,
+      currentIndex: 3,
       showBack: true,
       body: loading
           ? const Center(child: CircularProgressIndicator())
@@ -520,27 +770,7 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
                 key: formKey,
                 child: Column(
                   children: [
-                    DropdownButtonFormField<int>(
-                      value: clienteId,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.white,
-                        labelText: 'Cliente',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      items: clientes.map((cliente) {
-                        return DropdownMenuItem(
-                          value: cliente.id,
-                          child: Text(cliente.nome),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() => clienteId = value);
-                      },
-                    ),
+                    clienteDropdown(),
                     const SizedBox(height: 12),
                     input(
                       controller: tituloController,
@@ -560,10 +790,20 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
                     ),
                     DropdownButtonFormField<String>(
                       value: status,
+                      isExpanded: true,
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.textMuted,
+                      ),
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: Colors.white,
                         labelText: 'Status',
+                        prefixIcon: const Icon(
+                          Icons.flag_rounded,
+                          color: AppColors.navInactive,
+                          size: 20,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: BorderSide.none,
@@ -616,43 +856,26 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
                     ...itens.asMap().entries.map((entry) {
                       return itemCard(entry.value, entry.key);
                     }),
-                    const SizedBox(height: 14),
-                    input(
-                      controller: descontoController,
-                      label: 'Desconto',
-                      icon: Icons.remove_circle_outline,
-                      keyboardType: TextInputType.number,
-                    ),
-                    input(
-                      controller: acrescimoController,
-                      label: 'Acréscimo',
-                      icon: Icons.add_circle_outline,
-                      keyboardType: TextInputType.number,
-                    ),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Column(
-                        children: [
-                          Text('Subtotal: ${dinheiro(subtotal)}'),
-                          Text('Desconto: ${dinheiro(desconto)}'),
-                          Text('Acréscimo: ${dinheiro(acrescimo)}'),
-                          const Divider(),
-                          Text(
-                            'Total: ${dinheiro(total)}',
-                            style: const TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: valorInput(
+                            controller: descontoController,
+                            label: 'Desconto',
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: valorInput(
+                            controller: acrescimoController,
+                            label: 'Acréscimo',
+                          ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 14),
+                    totaisCard(),
                     const SizedBox(height: 16),
                     input(
                       controller: observacoesController,
@@ -672,7 +895,6 @@ class _OrdemFormScreenState extends State<OrdemFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
                     AppButton(
                       label: 'Salvar O.S',
                       loading: salvando,
