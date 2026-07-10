@@ -4,6 +4,7 @@ import '../models/app_user_model.dart';
 import 'admin_api_service.dart';
 import 'app_device_service.dart';
 import 'push_service.dart';
+import 'service_location_sync_service.dart';
 
 class AppBootstrapResult {
   final bool precisaCadastro;
@@ -72,6 +73,7 @@ class AppBootstrapService {
       final status = await AdminApiService.instance.verificarStatus(syncedUser);
       await AppDatabase.instance.salvarRemoteStatusCache(status);
       PushService.instance.ouvirAtualizacaoToken(syncedUser);
+      await ServiceLocationSyncService.sincronizar();
 
       return AppBootstrapResult(precisaCadastro: false, status: status);
     } catch (e) {

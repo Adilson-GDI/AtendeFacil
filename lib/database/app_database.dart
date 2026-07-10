@@ -52,7 +52,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 21,
+      version: 22,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -185,6 +185,20 @@ class AppDatabase {
 
     if (oldVersion < 21) {
       await _createQuickRoutinesTable(db);
+    }
+    if (oldVersion < 22) {
+      await _addColumnIfNotExists(
+        db,
+        'service_locations',
+        'sync_pending',
+        'INTEGER DEFAULT 1',
+      );
+      await _addColumnIfNotExists(
+        db,
+        'service_locations',
+        'is_deleted',
+        'INTEGER DEFAULT 0',
+      );
     }
   }
 
@@ -445,6 +459,8 @@ class AppDatabase {
       is_public INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT
+      ,sync_pending INTEGER DEFAULT 1
+      ,is_deleted INTEGER DEFAULT 0
     )
   ''');
   }
@@ -1610,7 +1626,11 @@ class AppDatabase {
 
   Future<int> criarServiceLocation(ServiceLocationModel location) async {
     final db = await instance.database;
-    return await db.insert('service_locations', location.toMap());
+    return await db.insert('service_locations', {
+      ...location.toMap(),
+      'sync_pending': 1,
+      'is_deleted': 0,
+    });
   }
 
   Future<List<ServiceLocationModel>> listarServiceLocations() async {
@@ -1618,6 +1638,7 @@ class AppDatabase {
 
     final result = await db.query(
       'service_locations',
+      where: 'is_deleted = 0',
       orderBy: 'name ASC, id DESC',
     );
 
@@ -1643,7 +1664,12 @@ class AppDatabase {
 
     return await db.update(
       'service_locations',
-      location.copyWith(updatedAt: DateTime.now().toIso8601String()).toMap(),
+      {
+        ...location
+            .copyWith(updatedAt: DateTime.now().toIso8601String())
+            .toMap(),
+        'sync_pending': 1,
+      },
       where: 'id = ?',
       whereArgs: [location.id],
     );
@@ -1651,10 +1677,37 @@ class AppDatabase {
 
   Future<int> deletarServiceLocation(int id) async {
     final db = await instance.database;
-    return await db.delete(
+    return await db.update(
       'service_locations',
+      {
+        'is_deleted': 1,
+        'sync_pending': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  Future<List<Map<String, Object?>>> listarServiceLocationsPendentes() async {
+    final db = await instance.database;
+    return db.query('service_locations', where: 'sync_pending = 1');
+  }
+
+  Future<void> concluirSyncServiceLocations(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await instance.database;
+    final marks = List.filled(ids.length, '?').join(',');
+    await db.delete(
+      'service_locations',
+      where: 'is_deleted = 1 AND id IN ($marks)',
+      whereArgs: ids,
+    );
+    await db.update(
+      'service_locations',
+      {'sync_pending': 0},
+      where: 'id IN ($marks)',
+      whereArgs: ids,
     );
   }
 
