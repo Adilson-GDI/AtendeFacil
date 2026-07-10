@@ -23,6 +23,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<ClienteModel> clientes = [];
   List<AgendaModel> agendaHoje = [];
+  List<Map<String, Object?>> rotinasRapidas = [];
+
+  static const quickActions =
+      <String, ({String label, String route, IconData icon})>{
+        'novo_aluno': (
+          label: 'Novo aluno',
+          route: '/clientes',
+          icon: Icons.person_add_alt_1_rounded,
+        ),
+        'novo_treino': (
+          label: 'Novo treino',
+          route: '/treinos',
+          icon: Icons.fitness_center_rounded,
+        ),
+        'avaliacoes': (
+          label: 'Avaliacoes',
+          route: '/anamnese',
+          icon: Icons.assignment_ind_rounded,
+        ),
+        'historico': (
+          label: 'Historico',
+          route: '/historico',
+          icon: Icons.history_rounded,
+        ),
+        'financeiro': (
+          label: 'Financeiro',
+          route: '/financeiro',
+          icon: Icons.payments_rounded,
+        ),
+        'mensagens': (
+          label: 'Mensagens',
+          route: '/mensagens-whatsapp',
+          icon: Icons.chat_rounded,
+        ),
+        'lembretes': (
+          label: 'Lembretes',
+          route: '/lembretes',
+          icon: Icons.notifications_active_rounded,
+        ),
+      };
 
   @override
   void initState() {
@@ -39,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final agenda = await AppDatabase.instance.listarAgendaDoDiaComRecorrencia(
       DateTime.now(),
     );
+    final rotinas = await AppDatabase.instance.listarQuickRoutines();
 
     agenda.sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
 
@@ -47,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       clientes = alunos;
       agendaHoje = agenda;
+      rotinasRapidas = rotinas;
       loading = false;
     });
   }
@@ -930,51 +972,143 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _quickActions() {
-    return Column(
-      children: [
-        Row(
-          children: [
-            _shortcutCard(
-              icon: Icons.person_add_alt_1_rounded,
-              title: 'Novo aluno',
-              subtitle: 'Cadastro guiado',
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ClienteFormScreen()),
-                );
-                await carregarDados();
-              },
-            ),
-            const SizedBox(width: 10),
-            _shortcutCard(
-              icon: Icons.assignment_ind_rounded,
-              title: 'Avaliacoes',
-              subtitle: 'Saude e objetivo',
-              onTap: () => Navigator.pushNamed(context, '/anamnese'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            _shortcutCard(
-              icon: Icons.fitness_center_rounded,
-              title: 'Novo treino',
-              subtitle: 'Criar treino',
-              onTap: () => Navigator.pushNamed(context, '/treinos'),
-            ),
-            const SizedBox(width: 10),
-            _shortcutCard(
-              icon: Icons.history_rounded,
-              title: 'Historico',
-              subtitle: 'Atendimentos',
-              onTap: () => Navigator.pushNamed(context, '/historico'),
-            ),
-          ],
-        ),
-      ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisExtent: 78,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: rotinasRapidas.length + 1,
+      itemBuilder: (context, index) {
+        if (index == rotinasRapidas.length) return _addRoutineCard();
+        final item = rotinasRapidas[index];
+        final action = quickActions[item['action_key']];
+        if (action == null) return const SizedBox.shrink();
+        return _shortcutCard(
+          icon: action.icon,
+          title: item['label']?.toString() ?? action.label,
+          subtitle: action.label,
+          onTap: () => Navigator.pushNamed(context, action.route),
+          onLongPress: () => _confirmarRemocaoRotina(item['id'] as int),
+        );
+      },
     );
+  }
+
+  Widget _addRoutineCard() => InkWell(
+    onTap: _adicionarRotina,
+    borderRadius: BorderRadius.circular(20),
+    child: Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_circle_outline_rounded, color: Color(0xFF2563EB)),
+          SizedBox(width: 8),
+          Text(
+            'Adicionar rotina',
+            style: TextStyle(
+              color: Color(0xFF2563EB),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Future<void> _adicionarRotina() async {
+    final key = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.all(18),
+          children: [
+            const Text(
+              'Escolha uma rotina',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            ...quickActions.entries.map(
+              (entry) => ListTile(
+                leading: Icon(entry.value.icon, color: const Color(0xFF2563EB)),
+                title: Text(
+                  entry.value.label,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                trailing: const Icon(Icons.add_rounded),
+                onTap: () => Navigator.pop(context, entry.key),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (key == null || !mounted) return;
+    final action = quickActions[key]!;
+    final controller = TextEditingController(text: action.label);
+    final label = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nome da rotina'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (label == null || label.isEmpty) return;
+    await AppDatabase.instance.criarQuickRoutine(actionKey: key, label: label);
+    await carregarDados();
+  }
+
+  Future<void> _confirmarRemocaoRotina(int id) async {
+    final remover = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remover rotina?'),
+        content: const Text('O atalho será removido da Home.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+    if (remover == true) {
+      await AppDatabase.instance.deletarQuickRoutine(id);
+      await carregarDados();
+    }
   }
 
   Widget _shortcutCard({
@@ -982,12 +1116,14 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    VoidCallback? onLongPress,
   }) {
     final primary = Theme.of(context).colorScheme.primary;
 
     return Expanded(
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(18),
         child: Container(
           height: 78,

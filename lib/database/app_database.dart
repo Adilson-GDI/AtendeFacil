@@ -1,14 +1,23 @@
+import 'dart:io';
+
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../app/app_runtime.dart';
 import '../models/cliente_model.dart';
 import '../models/produto_model.dart';
 import '../models/servico_model.dart';
 import '../models/ordem_servico_model.dart';
 import '../models/ordem_servico_item_model.dart';
 import '../models/pagamento_model.dart';
+import '../models/pagamento_aluno_model.dart';
 import '../models/app_config_model.dart';
+import '../models/app_remote_status_model.dart';
+import '../models/app_user_model.dart';
 import '../models/agenda_model.dart';
+import '../models/atendimento_model.dart';
+import '../models/service_location_model.dart';
+import '../models/support_message_model.dart';
 import 'treinos_database.dart';
 import '../models/exercicio_model.dart';
 import '../models/treino_model.dart';
@@ -24,17 +33,26 @@ class AppDatabase {
   Future<Database> get database async {
     if (_database != null) return _database!;
 
-    _database = await _initDB('atende_facil.db');
+    _database = await _initDB(AppRuntime.definition.databaseName);
     return _database!;
   }
 
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
+    final legacyPath = join(dbPath, 'atende_facil.db');
+
+    final dbFile = File(path);
+    final legacyFile = File(legacyPath);
+    if (filePath != 'atende_facil.db' &&
+        !await dbFile.exists() &&
+        await legacyFile.exists()) {
+      await legacyFile.copy(path);
+    }
 
     return await openDatabase(
       path,
-      version: 15,
+      version: 21,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -47,11 +65,18 @@ class AppDatabase {
     await _createOrdensServicoTable(db);
     await _createOrdemServicoItensTable(db);
     await _createPagamentosTable(db);
+    await _createPagamentosAlunosTable(db);
     await _createAppConfigTable(db);
     await _createAgendaTable(db);
+    await _createServiceLocationsTable(db);
+    await _createSupportMessagesTable(db);
     await _createAnamnesesTable(db);
     await TreinosDatabase.createTables(db);
     await _createLembretesTable(db);
+    await _createAtendimentosTable(db);
+    await _createAppUsersTable(db);
+    await _createAppRemoteStatusTable(db);
+    await _createQuickRoutinesTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -102,7 +127,7 @@ class AppDatabase {
 
     if (oldVersion < 9) {
       await db.execute(
-        "ALTER TABLE app_config ADD COLUMN tipo_servico TEXT DEFAULT 'GERAL'",
+        "ALTER TABLE app_config ADD COLUMN tipo_servico TEXT DEFAULT 'PERSONAL_TRAINER'",
       );
     }
 
@@ -130,6 +155,49 @@ class AppDatabase {
     if (oldVersion < 15) {
       await _addColumnIfNotExists(db, 'lembretes', 'ultima_execucao', 'TEXT');
     }
+
+    if (oldVersion < 16) {
+      await _createAtendimentosTable(db);
+    }
+
+    if (oldVersion < 17) {
+      await _createAppUsersTable(db);
+      await _createAppRemoteStatusTable(db);
+    }
+
+    if (oldVersion < 18) {
+      await _createPagamentosAlunosTable(db);
+    }
+
+    if (oldVersion < 19) {
+      await _createServiceLocationsTable(db);
+      await _addColumnIfNotExists(
+        db,
+        'agenda',
+        'service_location_id',
+        'INTEGER',
+      );
+    }
+
+    if (oldVersion < 20) {
+      await _createSupportMessagesTable(db);
+    }
+
+    if (oldVersion < 21) {
+      await _createQuickRoutinesTable(db);
+    }
+  }
+
+  Future<void> _createQuickRoutinesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS quick_routines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _addColumnIfNotExists(
@@ -252,13 +320,29 @@ class AppDatabase {
     ''');
   }
 
+  Future<void> _createPagamentosAlunosTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pagamentos_alunos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_id INTEGER NOT NULL,
+        valor REAL NOT NULL,
+        vencimento TEXT NOT NULL,
+        status TEXT DEFAULT 'PENDENTE',
+        descricao TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+      )
+    ''');
+  }
+
   Future<void> _createAppConfigTable(Database db) async {
     await db.execute('''
   CREATE TABLE IF NOT EXISTS app_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome_empresa TEXT DEFAULT 'Atende Fácil',
-    cor_primaria TEXT DEFAULT '#1B5CB1',
-    cor_secundaria TEXT DEFAULT '#C9A46B',
+    nome_empresa TEXT DEFAULT 'FitCheck',
+    cor_primaria TEXT DEFAULT '#2563EB',
+    cor_secundaria TEXT DEFAULT '#22C55E',
     logo_path TEXT,
 
     telefone TEXT,
@@ -274,7 +358,7 @@ class AppDatabase {
     mensagem_resumo_os TEXT,
     mensagem_cobranca TEXT,
 
-    tipo_servico TEXT DEFAULT 'GERAL',
+    tipo_servico TEXT DEFAULT 'PERSONAL_TRAINER',
 
     created_at TEXT NOT NULL,
     updated_at TEXT
@@ -289,9 +373,9 @@ class AppDatabase {
 
     if (result.isEmpty) {
       await db.insert('app_config', {
-        'nome_empresa': 'Atende Fácil',
-        'cor_primaria': '#1B5CB1',
-        'cor_secundaria': '#C9A46B',
+        'nome_empresa': AppRuntime.definition.defaultBusinessName,
+        'cor_primaria': '#2563EB',
+        'cor_secundaria': '#22C55E',
         'logo_path': null,
         'telefone': null,
         'whatsapp': null,
@@ -304,7 +388,7 @@ class AppDatabase {
         'estado': null,
         'mensagem_resumo_os': null,
         'mensagem_cobranca': null,
-        'tipo_servico': 'GERAL',
+        'tipo_servico': 'PERSONAL_TRAINER',
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': null,
       });
@@ -317,6 +401,7 @@ class AppDatabase {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       cliente_id INTEGER,
       ordem_servico_id INTEGER,
+      service_location_id INTEGER,
 
       titulo TEXT NOT NULL,
       descricao TEXT,
@@ -337,7 +422,43 @@ class AppDatabase {
       updated_at TEXT,
 
       FOREIGN KEY (cliente_id) REFERENCES clientes(id),
-      FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id)
+      FOREIGN KEY (ordem_servico_id) REFERENCES ordens_servico(id),
+      FOREIGN KEY (service_location_id) REFERENCES service_locations(id)
+    )
+  ''');
+  }
+
+  Future<void> _createServiceLocationsTable(Database db) async {
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS service_locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      address TEXT,
+      neighborhood TEXT,
+      city TEXT,
+      state TEXT,
+      zip_code TEXT,
+      latitude REAL,
+      longitude REAL,
+      type TEXT DEFAULT 'OUTRO',
+      notes TEXT,
+      is_public INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )
+  ''');
+  }
+
+  Future<void> _createSupportMessagesTable(Database db) async {
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      remote_id TEXT,
+      sender TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'PENDING',
+      created_at TEXT NOT NULL,
+      updated_at TEXT
     )
   ''');
   }
@@ -388,6 +509,139 @@ class AppDatabase {
   ''');
   }
 
+  Future<void> _createAtendimentosTable(Database db) async {
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS atendimentos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente_id INTEGER NOT NULL,
+      agenda_id INTEGER,
+      data_atendimento TEXT NOT NULL,
+      hora_inicio TEXT NOT NULL,
+      hora_fim TEXT,
+      duracao_minutos INTEGER DEFAULT 0,
+      treino_realizado TEXT,
+      observacoes TEXT,
+      status TEXT DEFAULT 'FINALIZADO',
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+      FOREIGN KEY (agenda_id) REFERENCES agenda(id)
+    )
+  ''');
+  }
+
+  Future<void> _createAppUsersTable(Database db) async {
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS app_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      remote_user_id TEXT,
+      nome TEXT NOT NULL,
+      email TEXT,
+      telefone TEXT,
+      profissao TEXT,
+      cidade TEXT,
+      estado TEXT,
+      device_id TEXT,
+      plataforma TEXT,
+      app_version TEXT,
+      fcm_token TEXT,
+      created_at TEXT NOT NULL,
+      last_sync_at TEXT
+    )
+  ''');
+  }
+
+  Future<void> _createAppRemoteStatusTable(Database db) async {
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS app_remote_status (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      app_enabled INTEGER DEFAULT 1,
+      user_blocked INTEGER DEFAULT 0,
+      force_update INTEGER DEFAULT 0,
+      min_version TEXT,
+      notice_active INTEGER DEFAULT 0,
+      notice_title TEXT,
+      notice_message TEXT,
+      notice_type TEXT,
+      agenda_enabled INTEGER DEFAULT 1,
+      payments_enabled INTEGER DEFAULT 1,
+      backup_enabled INTEGER DEFAULT 1,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+  }
+
+  // =========================
+  // USUARIO DO APP / CONTROLE ADMIN
+  // =========================
+
+  Future<AppUserModel?> buscarAppUser() async {
+    final db = await instance.database;
+
+    final result = await db.query('app_users', orderBy: 'id ASC', limit: 1);
+
+    if (result.isEmpty) return null;
+    return AppUserModel.fromMap(result.first);
+  }
+
+  Future<int> salvarAppUser(AppUserModel user) async {
+    final db = await instance.database;
+
+    if (user.id == null) {
+      return await db.insert('app_users', user.toMap());
+    }
+
+    await db.update(
+      'app_users',
+      user.toMap(),
+      where: 'id = ?',
+      whereArgs: [user.id],
+    );
+
+    return user.id!;
+  }
+
+  Future<void> atualizarAppUserToken({
+    required int userId,
+    required String? remoteUserId,
+    required String? fcmToken,
+  }) async {
+    final db = await instance.database;
+
+    await db.update(
+      'app_users',
+      {
+        'remote_user_id': remoteUserId,
+        'fcm_token': fcmToken,
+        'last_sync_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  Future<AppRemoteStatusModel?> buscarRemoteStatusCache() async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'app_remote_status',
+      where: 'id = 1',
+      limit: 1,
+    );
+
+    if (result.isEmpty) return null;
+    return AppRemoteStatusModel.fromMap(result.first);
+  }
+
+  Future<void> salvarRemoteStatusCache(AppRemoteStatusModel status) async {
+    final db = await instance.database;
+
+    await db.insert('app_remote_status', {
+      ...status.toMap(),
+      'id': 1,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   // =========================
   // CLIENTES
   // =========================
@@ -430,6 +684,11 @@ class AppDatabase {
 
   Future<int> deletarCliente(int id) async {
     final db = await instance.database;
+    await db.delete(
+      'pagamentos_alunos',
+      where: 'cliente_id = ?',
+      whereArgs: [id],
+    );
     return await db.delete('clientes', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -800,6 +1059,83 @@ class AppDatabase {
   }
 
   // =========================
+  // PAGAMENTOS DOS ALUNOS
+  // =========================
+
+  Future<int> criarPagamentoAluno(PagamentoAlunoModel pagamento) async {
+    final db = await instance.database;
+    return await db.insert('pagamentos_alunos', pagamento.toMap());
+  }
+
+  Future<int> atualizarPagamentoAluno(PagamentoAlunoModel pagamento) async {
+    final db = await instance.database;
+
+    return await db.update(
+      'pagamentos_alunos',
+      pagamento.toMap(),
+      where: 'id = ?',
+      whereArgs: [pagamento.id],
+    );
+  }
+
+  Future<int> deletarPagamentoAluno(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'pagamentos_alunos',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<List<PagamentoAlunoModel>> listarPagamentosAlunos() async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'pagamentos_alunos',
+      orderBy: 'vencimento DESC, id DESC',
+    );
+
+    return result.map((map) => PagamentoAlunoModel.fromMap(map)).toList();
+  }
+
+  Future<List<PagamentoAlunoModel>> listarPagamentosPorCliente(
+    int clienteId,
+  ) async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'pagamentos_alunos',
+      where: 'cliente_id = ?',
+      whereArgs: [clienteId],
+      orderBy: 'vencimento DESC, id DESC',
+    );
+
+    return result.map((map) => PagamentoAlunoModel.fromMap(map)).toList();
+  }
+
+  Future<Map<String, double>> resumoFinanceiroAlunos() async {
+    final pagamentos = await listarPagamentosAlunos();
+
+    double recebido = 0;
+    double pendente = 0;
+    double vencido = 0;
+
+    for (final pagamento in pagamentos) {
+      final status = pagamento.statusCalculado();
+
+      if (status == PagamentoAlunoModel.statusPago) {
+        recebido += pagamento.valor;
+      } else if (status == PagamentoAlunoModel.statusVencido) {
+        vencido += pagamento.valor;
+      } else {
+        pendente += pagamento.valor;
+      }
+    }
+
+    return {'recebido': recebido, 'pendente': pendente, 'vencido': vencido};
+  }
+
+  // =========================
   // CONFIGURAÇÃO DO APP
   // =========================
 
@@ -812,9 +1148,9 @@ class AppDatabase {
       final agora = DateTime.now().toIso8601String();
 
       final id = await db.insert('app_config', {
-        'nome_empresa': 'Atende Fácil',
-        'cor_primaria': '#1B5CB1',
-        'cor_secundaria': '#C9A46B',
+        'nome_empresa': AppRuntime.definition.defaultBusinessName,
+        'cor_primaria': '#2563EB',
+        'cor_secundaria': '#22C55E',
         'logo_path': null,
         'telefone': '',
         'whatsapp': '',
@@ -1043,6 +1379,54 @@ class AppDatabase {
     return result.isNotEmpty;
   }
 
+  // =========================
+  // ATENDIMENTOS
+  // =========================
+
+  Future<int> criarAtendimento(AtendimentoModel atendimento) async {
+    final db = await instance.database;
+    return await db.insert('atendimentos', atendimento.toMap());
+  }
+
+  Future<List<AtendimentoModel>> listarAtendimentos() async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'atendimentos',
+      orderBy: 'data_atendimento DESC, hora_inicio DESC',
+    );
+
+    return result.map((map) => AtendimentoModel.fromMap(map)).toList();
+  }
+
+  Future<List<AtendimentoModel>> listarAtendimentosPorCliente(
+    int clienteId,
+  ) async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'atendimentos',
+      where: 'cliente_id = ?',
+      whereArgs: [clienteId],
+      orderBy: 'data_atendimento DESC, hora_inicio DESC',
+    );
+
+    return result.map((map) => AtendimentoModel.fromMap(map)).toList();
+  }
+
+  Future<List<AtendimentoModel>> listarAtendimentosPorData(String data) async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'atendimentos',
+      where: 'data_atendimento = ?',
+      whereArgs: [data],
+      orderBy: 'hora_inicio DESC',
+    );
+
+    return result.map((map) => AtendimentoModel.fromMap(map)).toList();
+  }
+
   Future<double> totalPagoDaOrdem(int ordemServicoId) async {
     final db = await instance.database;
 
@@ -1084,10 +1468,10 @@ class AppDatabase {
     );
 
     if (result.isEmpty) {
-      return 'GERAL';
+      return 'PERSONAL_TRAINER';
     }
 
-    return result.first['tipo_servico']?.toString() ?? 'GERAL';
+    return result.first['tipo_servico']?.toString() ?? 'PERSONAL_TRAINER';
   }
 
   // =========================
@@ -1218,6 +1602,123 @@ class AppDatabase {
       treinoModeloId: treinoModeloId,
       clienteId: clienteId,
     );
+  }
+
+  // =========================
+  // LOCAIS DE ATENDIMENTO
+  // =========================
+
+  Future<int> criarServiceLocation(ServiceLocationModel location) async {
+    final db = await instance.database;
+    return await db.insert('service_locations', location.toMap());
+  }
+
+  Future<List<ServiceLocationModel>> listarServiceLocations() async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'service_locations',
+      orderBy: 'name ASC, id DESC',
+    );
+
+    return result.map((map) => ServiceLocationModel.fromMap(map)).toList();
+  }
+
+  Future<ServiceLocationModel?> buscarServiceLocationPorId(int id) async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'service_locations',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return null;
+    return ServiceLocationModel.fromMap(result.first);
+  }
+
+  Future<int> atualizarServiceLocation(ServiceLocationModel location) async {
+    final db = await instance.database;
+
+    return await db.update(
+      'service_locations',
+      location.copyWith(updatedAt: DateTime.now().toIso8601String()).toMap(),
+      where: 'id = ?',
+      whereArgs: [location.id],
+    );
+  }
+
+  Future<int> deletarServiceLocation(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'service_locations',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // =========================
+  // SUPORTE
+  // =========================
+
+  Future<int> criarSupportMessage(SupportMessageModel message) async {
+    final db = await instance.database;
+    return await db.insert('support_messages', message.toMap());
+  }
+
+  Future<List<SupportMessageModel>> listarSupportMessages() async {
+    final db = await instance.database;
+
+    final result = await db.query(
+      'support_messages',
+      orderBy: 'created_at ASC, id ASC',
+    );
+
+    return result.map((map) => SupportMessageModel.fromMap(map)).toList();
+  }
+
+  Future<int> atualizarSupportMessage(SupportMessageModel message) async {
+    final db = await instance.database;
+
+    return await db.update(
+      'support_messages',
+      message.copyWith(updatedAt: DateTime.now().toIso8601String()).toMap(),
+      where: 'id = ?',
+      whereArgs: [message.id],
+    );
+  }
+
+  // =========================
+  // ROTINAS RAPIDAS
+  // =========================
+
+  Future<List<Map<String, Object?>>> listarQuickRoutines() async {
+    final db = await instance.database;
+    return db.query('quick_routines', orderBy: 'position ASC, id ASC');
+  }
+
+  Future<int> criarQuickRoutine({
+    required String actionKey,
+    required String label,
+  }) async {
+    final db = await instance.database;
+    final count =
+        Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM quick_routines'),
+        ) ??
+        0;
+    return db.insert('quick_routines', {
+      'action_key': actionKey,
+      'label': label,
+      'position': count,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<int> deletarQuickRoutine(int id) async {
+    final db = await instance.database;
+    return db.delete('quick_routines', where: 'id = ?', whereArgs: [id]);
   }
 
   // =========================
