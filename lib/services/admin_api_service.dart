@@ -132,7 +132,7 @@ class AdminApiService {
           },
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 8));
+        .timeout(const Duration(seconds: 5));
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw TimeoutException('HTTP ${response.statusCode}');

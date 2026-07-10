@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../database/app_database.dart';
 import '../models/app_remote_status_model.dart';
 import '../models/app_user_model.dart';
@@ -5,6 +6,7 @@ import 'admin_api_service.dart';
 import 'app_device_service.dart';
 import 'push_service.dart';
 import 'service_location_sync_service.dart';
+import 'feature_flag_service.dart';
 
 class AppBootstrapResult {
   final bool precisaCadastro;
@@ -33,6 +35,11 @@ class AppBootstrapService {
       return AppBootstrapResult(precisaCadastro: true, status: cachedStatus);
     }
 
+    unawaited(_sincronizarEmSegundoPlano(user));
+    return AppBootstrapResult(precisaCadastro: false, status: cachedStatus);
+  }
+
+  Future<void> _sincronizarEmSegundoPlano(AppUserModel user) async {
     try {
       final token = await PushService.instance.prepararPermissaoEObterToken();
       var syncedUser = user;
@@ -70,20 +77,11 @@ class AppBootstrapService {
         );
       }
 
-      final status = await AdminApiService.instance.verificarStatus(syncedUser);
-      await AppDatabase.instance.salvarRemoteStatusCache(status);
+      await FeatureFlagService.instance.refreshInBackground(syncedUser);
       PushService.instance.ouvirAtualizacaoToken(syncedUser);
       await ServiceLocationSyncService.sincronizar();
-
-      return AppBootstrapResult(precisaCadastro: false, status: status);
     } catch (e) {
       PushService.instance.ouvirAtualizacaoToken(user);
-
-      return AppBootstrapResult(
-        precisaCadastro: false,
-        status: cachedStatus,
-        erroOnline: e.toString(),
-      );
     }
   }
 
