@@ -4,13 +4,12 @@ import '../../core/app_colors.dart';
 import '../../database/app_database.dart';
 import '../../models/agenda_model.dart';
 import '../../models/cliente_model.dart';
-import '../../models/ordem_servico_model.dart';
-import '../../models/produto_model.dart';
 import '../../widgets/app_scaffold.dart';
 import '../agenda/agenda_form_screen.dart';
+import '../anamnese/anamnese_form_screen.dart';
+import '../atendimentos/atendimento_screen.dart';
+import '../atendimentos/historico_screen.dart';
 import '../clientes/cliente_form_screen.dart';
-import '../ordens/ordem_form_screen.dart';
-import '../../core/tipo_servico_app.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,15 +20,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool loading = true;
-  String tipoServico = TipoServicoApp.geral;
 
   List<ClienteModel> clientes = [];
-  List<OrdemServicoModel> ordens = [];
-  List<ProdutoModel> produtos = [];
   List<AgendaModel> agendaHoje = [];
-
-  double recebido = 0;
-  double pendente = 0;
 
   @override
   void initState() {
@@ -37,114 +30,643 @@ class _HomeScreenState extends State<HomeScreen> {
     carregarDados();
   }
 
-  String dataSql(DateTime data) {
-    return '${data.year.toString().padLeft(4, '0')}-'
-        '${data.month.toString().padLeft(2, '0')}-'
-        '${data.day.toString().padLeft(2, '0')}';
-  }
-
   Future<void> carregarDados() async {
-    setState(() => loading = true);
-
-    tipoServico = await AppDatabase.instance.buscarTipoServicoApp();
-    clientes = await AppDatabase.instance.listarClientes();
-    ordens = await AppDatabase.instance.listarOrdensServico();
-    produtos = await AppDatabase.instance.listarProdutos();
-    agendaHoje = await AppDatabase.instance.listarAgendaPorData(
-      dataSql(DateTime.now()),
-    );
-
-    final resumo = await AppDatabase.instance.resumoFinanceiro();
-    recebido = resumo['recebido'] ?? 0;
-    pendente = resumo['pendente'] ?? 0;
-
     if (mounted) {
-      setState(() => loading = false);
+      setState(() => loading = true);
     }
+
+    final alunos = await AppDatabase.instance.listarClientes();
+    final agenda = await AppDatabase.instance.listarAgendaDoDiaComRecorrencia(
+      DateTime.now(),
+    );
+
+    agenda.sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
+
+    if (!mounted) return;
+
+    setState(() {
+      clientes = alunos;
+      agendaHoje = agenda;
+      loading = false;
+    });
   }
 
-  String dinheiro(double valor) {
-    return 'R\$ ${valor.toStringAsFixed(2).replaceAll('.', ',')}';
-  }
-
-  List<OrdemServicoModel> get ordensAbertas {
-    return ordens
-        .where((o) => o.status != 'PAGO' && o.status != 'CANCELADO')
-        .take(5)
+  List<AgendaModel> get agendaAtiva {
+    return agendaHoje
+        .where((item) => item.status != 'CANCELADO' && item.status != 'FALTOU')
         .toList();
   }
 
-  List<ProdutoModel> get estoqueBaixo {
-    return produtos
-        .where((p) => p.estoqueAtual <= 3 && p.ativo == 1)
-        .take(5)
+  int get totalConcluidos {
+    return agendaHoje.where((item) => item.status == 'CONCLUIDO').length;
+  }
+
+  int get totalEmAndamento {
+    return agendaHoje.where((item) => item.status == 'EM_ANDAMENTO').length;
+  }
+
+  int get totalPendentes {
+    return agendaAtiva
+        .where(
+          (item) => item.status != 'CONCLUIDO' && item.status != 'EM_ANDAMENTO',
+        )
+        .length;
+  }
+
+  AgendaModel? get proximoAtendimento {
+    final abertos = agendaAtiva
+        .where((item) => item.status != 'CONCLUIDO')
         .toList();
+
+    if (abertos.isEmpty) return null;
+
+    final agora = DateTime.now().subtract(const Duration(minutes: 5));
+
+    for (final item in abertos) {
+      final horario = horarioHoje(item.horaInicio);
+
+      if (horario == null || !horario.isBefore(agora)) {
+        return item;
+      }
+    }
+
+    return abertos.first;
   }
 
-  Future<void> novaOrdem() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const OrdemFormScreen()),
-    );
-    carregarDados();
+  DateTime? horarioHoje(String hora) {
+    final partes = hora.split(':');
+    if (partes.length < 2) return null;
+
+    final h = int.tryParse(partes[0]);
+    final m = int.tryParse(partes[1]);
+
+    if (h == null || m == null) return null;
+
+    final hoje = DateTime.now();
+    return DateTime(hoje.year, hoje.month, hoje.day, h, m);
   }
 
-  Future<void> novoCliente() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ClienteFormScreen()),
-    );
-    carregarDados();
-  }
-
-  Future<void> novoAgendamento() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AgendaFormScreen()),
-    );
-    carregarDados();
-  }
-
-  ClienteModel? buscarCliente(int? clienteId) {
-    if (clienteId == null) return null;
+  ClienteModel? clienteDoAgendamento(AgendaModel item) {
+    if (item.clienteId == null) return null;
 
     try {
-      return clientes.firstWhere((c) => c.id == clienteId);
+      return clientes.firstWhere((cliente) => cliente.id == item.clienteId);
     } catch (_) {
       return null;
     }
   }
 
-  Widget topCard() {
+  String dataHojeLabel() {
+    final hoje = DateTime.now();
+    const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
+    const meses = [
+      'jan',
+      'fev',
+      'mar',
+      'abr',
+      'mai',
+      'jun',
+      'jul',
+      'ago',
+      'set',
+      'out',
+      'nov',
+      'dez',
+    ];
+
+    return '${dias[hoje.weekday - 1]}, ${hoje.day} ${meses[hoje.month - 1]}';
+  }
+
+  String horarioAgenda(AgendaModel item) {
+    if (item.horaFim.isEmpty) return item.horaInicio;
+    return '${item.horaInicio} - ${item.horaFim}';
+  }
+
+  String statusLabel(String status) {
+    switch (status) {
+      case 'EM_ANDAMENTO':
+        return 'Em andamento';
+      case 'CONCLUIDO':
+        return 'Finalizado';
+      case 'CANCELADO':
+        return 'Cancelado';
+      case 'FALTOU':
+        return 'Faltou';
+      default:
+        return 'Agendado';
+    }
+  }
+
+  Color statusColor(String status) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    switch (status) {
+      case 'EM_ANDAMENTO':
+        return primary;
+      case 'CONCLUIDO':
+        return AppColors.success;
+      case 'CANCELADO':
+        return AppColors.danger;
+      case 'FALTOU':
+        return AppColors.textMuted;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  Future<void> iniciarFluxo() async {
+    final proximo = proximoAtendimento;
+    final opcao = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _sheetHandle(),
+                const SizedBox(height: 18),
+                const Text(
+                  'Rotina do atendimento',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Comece pelo proximo aluno ou escolha outro caminho rapido.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                if (proximo != null)
+                  _stepTile(
+                    step: '1',
+                    icon: Icons.play_arrow_rounded,
+                    title: 'Iniciar proximo atendimento',
+                    subtitle:
+                        '${clienteDoAgendamento(proximo)?.nome ?? 'Aluno nao informado'} - ${horarioAgenda(proximo)}',
+                    onTap: () => Navigator.pop(context, 'proximo'),
+                  ),
+                _stepTile(
+                  step: proximo == null ? '1' : '2',
+                  icon: Icons.person_search_rounded,
+                  title: 'Selecionar aluno',
+                  subtitle: clientes.isEmpty
+                      ? 'Nenhum aluno cadastrado ainda'
+                      : 'Continuar com um aluno existente',
+                  enabled: clientes.isNotEmpty,
+                  onTap: () => Navigator.pop(context, 'selecionar'),
+                ),
+                _stepTile(
+                  step: proximo == null ? '2' : '3',
+                  icon: Icons.person_add_alt_1_rounded,
+                  title: 'Cadastrar aluno',
+                  subtitle: 'Criar cadastro, anamnese e agenda',
+                  onTap: () => Navigator.pop(context, 'cadastrar'),
+                ),
+                _stepTile(
+                  step: proximo == null ? '3' : '4',
+                  icon: Icons.calendar_month_rounded,
+                  title: 'Agendar aula',
+                  subtitle: 'Criar horario sem sair do fluxo',
+                  onTap: () => Navigator.pop(context, 'agenda'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    switch (opcao) {
+      case 'proximo':
+        if (proximo != null) {
+          await abrirAtendimento(proximo);
+        }
+        break;
+      case 'cadastrar':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ClienteFormScreen()),
+        );
+        break;
+      case 'selecionar':
+        final aluno = await selecionarAluno();
+        if (!mounted) return;
+        if (aluno != null) {
+          await mostrarAcoesDoAluno(aluno);
+        }
+        break;
+      case 'agenda':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AgendaFormScreen()),
+        );
+        break;
+    }
+
+    await carregarDados();
+  }
+
+  Future<ClienteModel?> selecionarAluno() async {
+    return showModalBottomSheet<ClienteModel>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.72,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+              child: Column(
+                children: [
+                  _sheetHandle(),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Selecionar aluno',
+                    style: TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: clientes.length,
+                      itemBuilder: (_, index) {
+                        final aluno = clientes[index];
+
+                        return _studentTile(
+                          aluno: aluno,
+                          onTap: () => Navigator.pop(context, aluno),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> abrirAtendimento(AgendaModel item) async {
+    final aluno = clienteDoAgendamento(item);
+
+    if (aluno == null) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AgendaFormScreen(agenda: item)),
+      );
+      return;
+    }
+
+    final acao = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _sheetHandle(),
+                const SizedBox(height: 18),
+                Text(
+                  aluno.nome,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${horarioAgenda(item)} - ${item.titulo}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _stepTile(
+                  step: '1',
+                  icon: Icons.play_arrow_rounded,
+                  title: 'Iniciar atendimento',
+                  subtitle: 'Cronometrar e registrar observacoes',
+                  onTap: () => Navigator.pop(context, 'atendimento'),
+                ),
+                _stepTile(
+                  step: '2',
+                  icon: Icons.calendar_month_rounded,
+                  title: 'Editar agendamento',
+                  subtitle: 'Ajustar horario, status ou observacoes',
+                  onTap: () => Navigator.pop(context, 'agenda'),
+                ),
+                _stepTile(
+                  step: '3',
+                  icon: Icons.badge_rounded,
+                  title: 'Perfil completo',
+                  subtitle: 'Dados, historico e proximos passos',
+                  onTap: () => Navigator.pop(context, 'perfil'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || acao == null) return;
+
+    if (acao == 'atendimento') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AtendimentoScreen(aluno: aluno, agenda: item),
+        ),
+      );
+    } else if (acao == 'agenda') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AgendaFormScreen(agenda: item)),
+      );
+    } else {
+      await abrirAcao(aluno, acao);
+    }
+  }
+
+  Future<void> mostrarAcoesDoAluno(ClienteModel aluno) async {
+    final acao = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _sheetHandle(),
+                const SizedBox(height: 18),
+                Text(
+                  aluno.nome,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'O que voce vai fazer agora?',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _stepTile(
+                  step: '1',
+                  icon: Icons.play_arrow_rounded,
+                  title: 'Iniciar atendimento',
+                  subtitle: 'Cronometro, treino realizado e observacoes',
+                  onTap: () => Navigator.pop(context, 'atendimento'),
+                ),
+                _stepTile(
+                  step: '2',
+                  icon: Icons.calendar_month_rounded,
+                  title: 'Agendar aula',
+                  subtitle: 'Definir data, horario e recorrencia',
+                  onTap: () => Navigator.pop(context, 'agenda'),
+                ),
+                _stepTile(
+                  step: '3',
+                  icon: Icons.assignment_ind_rounded,
+                  title: 'Anamnese',
+                  subtitle: 'Registrar objetivo, lesoes e restricoes',
+                  onTap: () => Navigator.pop(context, 'anamnese'),
+                ),
+                _stepTile(
+                  step: '4',
+                  icon: Icons.history_rounded,
+                  title: 'Historico',
+                  subtitle: 'Ver atendimentos anteriores',
+                  onTap: () => Navigator.pop(context, 'historico'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || acao == null) return;
+
+    await abrirAcao(aluno, acao);
+    await carregarDados();
+  }
+
+  Future<void> abrirAcao(ClienteModel aluno, String acao) async {
+    switch (acao) {
+      case 'atendimento':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => AtendimentoScreen(aluno: aluno)),
+        );
+        break;
+      case 'agenda':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AgendaFormScreen(alunoInicial: aluno),
+          ),
+        );
+        break;
+      case 'anamnese':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AnamneseFormScreen(alunoInicial: aluno),
+          ),
+        );
+        break;
+      case 'perfil':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ClienteFormScreen(cliente: aluno)),
+        );
+        break;
+      case 'historico':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HistoricoScreen(alunoInicial: aluno),
+          ),
+        );
+        break;
+    }
+  }
+
+  Widget _sheetHandle() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      width: 44,
+      height: 5,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.border),
+        color: AppColors.border,
+        borderRadius: BorderRadius.circular(20),
+      ),
+    );
+  }
+
+  Widget _heroCard() {
+    final next = proximoAtendimento;
+    final aluno = next == null ? null : clienteDoAgendamento(next);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: AppColors.primaryDark.withValues(alpha: 0.25),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: _miniFinanceiro(
-              title: 'Recebido',
-              value: dinheiro(recebido),
-              icon: Icons.trending_up_rounded,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      color: AppColors.gold,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      dataHojeLabel(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                Icons.workspace_premium_rounded,
+                color: AppColors.gold.withValues(alpha: 0.95),
+                size: 24,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            next == null ? 'Agenda pronta' : 'Proximo atendimento',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          Container(width: 1, height: 46, color: AppColors.border),
-          Expanded(
-            child: _miniFinanceiro(
-              title: 'Pendente',
-              value: dinheiro(pendente),
-              icon: Icons.schedule_rounded,
+          const SizedBox(height: 6),
+          Text(
+            next == null ? 'Comece pelo aluno certo' : aluno?.nome ?? 'Aluno',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            next == null
+                ? 'Escolha um aluno, cadastre um novo ou crie um agendamento.'
+                : '${horarioAgenda(next)} - ${next.titulo}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.76),
+              fontSize: 13,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: loading ? null : iniciarFluxo,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text(
+                'Iniciar rotina',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.primaryDark,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
             ),
           ),
         ],
@@ -152,86 +674,65 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _miniFinanceiro({
-    required String title,
-    required String value,
-    required IconData icon,
-  }) {
-    final primary = Theme.of(context).colorScheme.primary;
-
+  Widget _metricsRow() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: primary.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: primary, size: 18),
+        _metricCard(
+          label: 'Hoje',
+          value: agendaAtiva.length.toString(),
+          icon: Icons.event_available_rounded,
         ),
-        const SizedBox(width: 9),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.textDark,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+        const SizedBox(width: 10),
+        _metricCard(
+          label: 'Em andamento',
+          value: totalEmAndamento.toString(),
+          icon: Icons.timer_rounded,
+        ),
+        const SizedBox(width: 10),
+        _metricCard(
+          label: 'Pendentes',
+          value: totalPendentes.toString(),
+          icon: Icons.pending_actions_rounded,
         ),
       ],
     );
   }
 
-  Widget actionSmall({
+  Widget _metricCard({
+    required String label,
+    required String value,
     required IconData icon,
-    required String title,
-    required VoidCallback onTap,
   }) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
+    return Expanded(
       child: Container(
-        width: 96,
-        height: 72,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        height: 84,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.border),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, color: primary.withOpacity(0.80), size: 21),
-            const SizedBox(height: 6),
+            Icon(icon, color: primary, size: 20),
             Text(
-              title,
-              textAlign: TextAlign.center,
+              value,
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: AppColors.textDark,
+                color: AppColors.textMuted,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
               ),
@@ -242,52 +743,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget metricCard({
-    required String value,
-    required String label,
-    required IconData icon,
-  }) {
-    final primary = Theme.of(context).colorScheme.primary;
-
-    return Container(
-      height: 70,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: primary, size: 22),
-          const SizedBox(width: 10),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.textDark,
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget sectionTitle(String title, {VoidCallback? onTap}) {
-    final primary = Theme.of(context).colorScheme.primary;
-
+  Widget _sectionHeader(String title, {String? action, VoidCallback? onTap}) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
           Expanded(
@@ -300,20 +758,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          if (onTap != null)
-            InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: Text(
-                  'Ver tudo',
-                  style: TextStyle(
-                    color: primary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
-                  ),
-                ),
+          if (action != null)
+            TextButton(
+              onPressed: onTap,
+              child: Text(
+                action,
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
         ],
@@ -321,188 +771,319 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Color corStatus(String status) {
+  Widget _quickActions() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            _shortcutCard(
+              icon: Icons.person_add_alt_1_rounded,
+              title: 'Novo aluno',
+              subtitle: 'Cadastro guiado',
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ClienteFormScreen()),
+                );
+                await carregarDados();
+              },
+            ),
+            const SizedBox(width: 10),
+            _shortcutCard(
+              icon: Icons.assignment_ind_rounded,
+              title: 'Avaliacoes',
+              subtitle: 'Saude e objetivo',
+              onTap: () => Navigator.pushNamed(context, '/anamnese'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _shortcutCard(
+              icon: Icons.history_rounded,
+              title: 'Historico',
+              subtitle: 'Atendimentos',
+              onTap: () => Navigator.pushNamed(context, '/historico'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _shortcutCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
     final primary = Theme.of(context).colorScheme.primary;
-    final secondary = Theme.of(context).colorScheme.secondary;
 
-    switch (status) {
-      case 'PAGO':
-        return AppColors.success;
-      case 'CONCLUIDO':
-        return primary;
-      case 'AGUARDANDO_PAGAMENTO':
-        return AppColors.warning;
-      case 'CANCELADO':
-        return AppColors.danger;
-      default:
-        return secondary;
-    }
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          height: 96,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, color: primary, size: 22),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  String labelStatus(String status) {
-    switch (status) {
-      case 'ORCAMENTO':
-        return 'Orçamento';
-      case 'APROVADO':
-        return 'Aprovado';
-      case 'EM_ANDAMENTO':
-        return 'Em andamento';
-      case 'CONCLUIDO':
-        return 'Concluído';
-      case 'AGUARDANDO_PAGAMENTO':
-        return 'Aguardando pagamento';
-      case 'PAGO':
-        return 'Pago';
-      case 'CANCELADO':
-        return 'Cancelado';
-      default:
-        return status;
+  Widget _agendaList() {
+    final itens = agendaAtiva.take(5).toList();
+
+    if (itens.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.event_available_rounded,
+              color: Theme.of(context).colorScheme.primary,
+              size: 32,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Nenhuma aula agendada hoje',
+              style: TextStyle(
+                color: AppColors.textDark,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Use iniciar para cadastrar, selecionar aluno ou agendar.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            ),
+          ],
+        ),
+      );
     }
+
+    return Column(children: itens.map(_agendaTile).toList());
   }
 
-  Widget agendaCard(AgendaModel item) {
-    final cliente = buscarCliente(item.clienteId);
-
-    Color cor = AppColors.warning;
-
-    if (item.status == 'CONCLUIDO') cor = AppColors.success;
-    if (item.status == 'CANCELADO') cor = AppColors.danger;
-    if (item.status == 'FALTOU') cor = AppColors.textMuted;
+  Widget _agendaTile(AgendaModel item) {
+    final aluno = clienteDoAgendamento(item);
+    final color = statusColor(item.status);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 9),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
       ),
       child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AgendaFormScreen(agenda: item)),
-          );
-          carregarDados();
+          await abrirAtendimento(item);
+          await carregarDados();
         },
-        leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: cor.withOpacity(0.10),
-          child: Icon(Icons.event_available_rounded, color: cor, size: 18),
+        leading: Container(
+          width: 52,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            item.horaInicio.isEmpty ? '--:--' : item.horaInicio,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ),
         title: Text(
-          item.titulo,
+          aluno?.nome ?? item.titulo,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontWeight: FontWeight.w800,
             color: AppColors.textDark,
-            fontSize: 13,
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
           ),
         ),
         subtitle: Text(
-          '${cliente?.nome ?? 'Cliente não informado'}\n'
-          '${item.horaInicio} - ${item.horaFim.isEmpty ? '--:--' : item.horaFim} • ${item.status}',
-          maxLines: 2,
+          '${statusLabel(item.status)} - ${item.horaFim.isEmpty ? item.titulo : horarioAgenda(item)}',
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: AppColors.textMuted,
-            fontSize: 11,
-            height: 1.3,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
           ),
         ),
-        isThreeLine: true,
         trailing: const Icon(
           Icons.arrow_forward_ios_rounded,
-          size: 13,
           color: AppColors.navInactive,
+          size: 14,
         ),
       ),
     );
   }
 
-  Widget ordemCard(OrdemServicoModel ordem) {
-    final cor = corStatus(ordem.status);
+  Widget _studentTile({
+    required ClienteModel aluno,
+    required VoidCallback onTap,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 9),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
       child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => OrdemFormScreen(ordem: ordem)),
-          );
-          carregarDados();
-        },
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: cor.withOpacity(0.10),
-          child: Icon(Icons.assignment_rounded, color: cor, size: 18),
+          backgroundColor: primary.withValues(alpha: 0.10),
+          child: Icon(Icons.person_rounded, color: primary),
         ),
         title: Text(
-          'OS #${ordem.id} • ${ordem.titulo}',
+          aluno.nome,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontWeight: FontWeight.w800,
             color: AppColors.textDark,
-            fontSize: 13,
+            fontWeight: FontWeight.w900,
           ),
         ),
         subtitle: Text(
-          '${labelStatus(ordem.status)} • ${dinheiro(ordem.total)}',
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+          aluno.telefone.isEmpty ? 'Sem telefone' : aluno.telefone,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
         ),
         trailing: const Icon(
           Icons.arrow_forward_ios_rounded,
-          size: 13,
+          size: 14,
           color: AppColors.navInactive,
         ),
+        onTap: onTap,
       ),
     );
   }
 
-  Widget estoqueCard(ProdutoModel produto) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: AppColors.danger.withOpacity(0.10),
-          child: const Icon(
-            Icons.inventory_2_rounded,
-            color: AppColors.danger,
-            size: 18,
-          ),
+  Widget _stepTile({
+    required String step,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.48,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
         ),
-        title: Text(
-          produto.nome,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            color: AppColors.textDark,
-            fontSize: 13,
+        child: ListTile(
+          enabled: enabled,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 8,
           ),
-        ),
-        subtitle: Text(
-          'Estoque: ${produto.estoqueAtual.toStringAsFixed(0)} ${produto.unidade}',
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+          leading: CircleAvatar(
+            backgroundColor: primary.withValues(alpha: 0.10),
+            child: Text(
+              step,
+              style: TextStyle(color: primary, fontWeight: FontWeight.w900),
+            ),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: enabled ? primary : AppColors.textMuted,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          subtitle: Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+          trailing: const Icon(
+            Icons.arrow_forward_ios_rounded,
+            size: 14,
+            color: AppColors.navInactive,
+          ),
+          onTap: enabled ? onTap : null,
         ),
       ),
     );
@@ -511,8 +1092,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      title: 'Atende Fácil',
-      subtitle: 'Painel do negócio',
+      title: 'Personal Trainer',
+      subtitle: 'Central do dia',
       currentIndex: 0,
       body: loading
           ? const Center(child: CircularProgressIndicator())
@@ -521,116 +1102,31 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 children: [
-                  topCard(),
-
+                  _heroCard(),
                   const SizedBox(height: 14),
-
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      actionSmall(
-                        icon: Icons.calendar_month_rounded,
-                        title: 'Agenda',
-                        onTap: novoAgendamento,
-                      ),
-                      actionSmall(
-                        icon: Icons.notifications_active_rounded,
-                        title: 'Lembretes',
-                        onTap: () {
-                          Navigator.pushNamed(context, '/lembretes');
-                        },
-                      ),
-                      actionSmall(
-                        icon: Icons.note_add_rounded,
-                        title: 'Nova OS',
-                        onTap: novaOrdem,
-                      ),
-                      actionSmall(
-                        icon: Icons.person_add_alt_1_rounded,
-                        title: 'Cliente',
-                        onTap: novoCliente,
-                      ),
-                      actionSmall(
-                        icon: Icons.payments_rounded,
-                        title: 'Financeiro',
-                        onTap: () {
-                          Navigator.pushReplacementNamed(
-                            context,
-                            '/financeiro',
-                          );
-                        },
-                      ),
-                      if (tipoServico == TipoServicoApp.personalTrainer ||
-                          tipoServico == TipoServicoApp.fisioterapeuta)
-                        actionSmall(
-                          icon: Icons.fitness_center_rounded,
-                          title: 'Treinos',
-                          onTap: () {
-                            Navigator.pushNamed(context, '/treinos');
-                          },
-                        ),
-
-                      if (tipoServico == TipoServicoApp.personalTrainer ||
-                          tipoServico == TipoServicoApp.fisioterapeuta)
-                        actionSmall(
-                          icon: Icons.assignment_ind_rounded,
-                          title: 'Anamnese',
-                          onTap: () {
-                            Navigator.pushNamed(context, '/anamnese');
-                          },
-                        ),
-                    ],
-                  ),
-
-                  sectionTitle(
+                  _metricsRow(),
+                  const SizedBox(height: 20),
+                  _sectionHeader('Rotina rapida'),
+                  _quickActions(),
+                  const SizedBox(height: 20),
+                  _sectionHeader(
                     'Agenda de hoje',
-                    onTap: () {
-                      Navigator.pushNamed(context, '/agenda');
-                    },
+                    action: 'Ver agenda',
+                    onTap: () => Navigator.pushNamed(context, '/agenda'),
                   ),
-
-                  if (agendaHoje.isEmpty)
-                    const Text(
-                      'Nenhum atendimento agendado para hoje',
-                      style: TextStyle(
+                  _agendaList(),
+                  if (totalConcluidos > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '$totalConcluidos atendimento(s) concluido(s) hoje',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
                         color: AppColors.textMuted,
-                        fontSize: 12,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
                       ),
-                    )
-                  else
-                    ...agendaHoje.take(4).map(agendaCard),
-
-                  sectionTitle(
-                    'Ordens em andamento',
-                    onTap: () {
-                      Navigator.pushReplacementNamed(context, '/ordens');
-                    },
-                  ),
-
-                  if (ordensAbertas.isEmpty)
-                    const Text(
-                      'Nenhuma ordem em andamento',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    )
-                  else
-                    ...ordensAbertas.map(ordemCard),
-
-                  sectionTitle('Estoque baixo'),
-
-                  if (estoqueBaixo.isEmpty)
-                    const Text(
-                      'Nenhum produto com estoque baixo',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    )
-                  else
-                    ...estoqueBaixo.map(estoqueCard),
+                    ),
+                  ],
                 ],
               ),
             ),
