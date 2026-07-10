@@ -793,6 +793,142 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _modulesCarousel() {
+    final items = <({IconData icon, String label, String route, Color color})>[
+      (
+        icon: Icons.people_alt_rounded,
+        label: 'Alunos',
+        route: '/clientes',
+        color: const Color(0xFF2563EB),
+      ),
+      (
+        icon: Icons.calendar_month_rounded,
+        label: 'Agenda',
+        route: '/agenda',
+        color: const Color(0xFF7C3AED),
+      ),
+      (
+        icon: Icons.fitness_center_rounded,
+        label: 'Treinos',
+        route: '/treinos',
+        color: const Color(0xFFF59E0B),
+      ),
+      (
+        icon: Icons.assignment_ind_rounded,
+        label: 'Avaliacoes',
+        route: '/anamnese',
+        color: const Color(0xFF22A447),
+      ),
+      (
+        icon: Icons.sports_gymnastics_rounded,
+        label: 'Exercicios',
+        route: '/exercicios',
+        color: const Color(0xFFEC4899),
+      ),
+      (
+        icon: Icons.chat_bubble_rounded,
+        label: 'Mensagens',
+        route: '/mensagens-whatsapp',
+        color: const Color(0xFF2563EB),
+      ),
+      (
+        icon: Icons.add_location_alt_rounded,
+        label: 'Locais',
+        route: '/locais-atendimento',
+        color: const Color(0xFF0EA5E9),
+      ),
+      (
+        icon: Icons.notifications_active_rounded,
+        label: 'Lembretes',
+        route: '/lembretes',
+        color: const Color(0xFFEF4444),
+      ),
+      (
+        icon: Icons.payments_rounded,
+        label: 'Financeiro',
+        route: '/financeiro',
+        color: const Color(0xFF16A34A),
+      ),
+      (
+        icon: Icons.storefront_rounded,
+        label: 'Perfil',
+        route: '/empresa',
+        color: const Color(0xFF6366F1),
+      ),
+      (
+        icon: Icons.palette_rounded,
+        label: 'Aparencia',
+        route: '/aparencia',
+        color: const Color(0xFFD946EF),
+      ),
+      (
+        icon: Icons.backup_rounded,
+        label: 'Backup',
+        route: '/backup',
+        color: const Color(0xFF64748B),
+      ),
+      (
+        icon: Icons.support_agent_rounded,
+        label: 'Suporte',
+        route: '/suporte',
+        color: const Color(0xFF0891B2),
+      ),
+    ];
+
+    return Container(
+      height: 94,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => Container(
+          width: 1,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          color: AppColors.border,
+        ),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return InkWell(
+            onTap: () => Navigator.pushNamed(context, item.route),
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              width: 76,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(item.icon, color: item.color, size: 27),
+                  const SizedBox(height: 7),
+                  Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _quickActions() {
     return Column(
       children: [
@@ -1156,6 +1292,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 14),
                   _metricsRow(),
                   const SizedBox(height: 20),
+                  _modulesCarousel(),
+                  const SizedBox(height: 24),
                   _sectionHeader('Rotina rapida'),
                   _quickActions(),
                   const SizedBox(height: 20),
